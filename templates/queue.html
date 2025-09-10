@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block content %}
+<h1 class="text-xl font-semibold mb-4">Queue</h1>
+<div class="bg-white rounded-xl shadow p-5">
+    <table class="min-w-full text-sm">
+        <thead>
+            <tr class="text-left">
+                <th class="pr-4">Job</th>
+                <th class="pr-4">State</th>
+                <th>Open</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for j in jobs %}
+            <tr class="border-t">
+                <td class="pr-4 font-mono">{{ j.job_id }}</td>
+                <td class="pr-4">
+                    <span class="text-xs px-2 py-1 rounded bg-slate-100">{{ j.state }}</span>
+                </td>
+                <td><a class="text-indigo-600" href="/job/{{ j.job_id }}">View</a></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3" class="text-slate-500 py-3">No jobs yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -12,6 +12,21 @@ async def home(req: Request):
     jobs = list_jobs(50)
     return TEMPLATES.TemplateResponse("home.html", {"request": req, "jobs": jobs})
 
+@router.get("/queue", response_class=HTMLResponse)
+async def queue(req: Request):
+    jobs = list_jobs(200)
+    return TEMPLATES.TemplateResponse("queue.html", {"request": req, "jobs": jobs})
+
+@router.get("/protocols", response_class=HTMLResponse)
+async def protocols(req: Request):
+    jobs = list_jobs(200)
+    have = []
+    for j in jobs:
+        art = artifacts_dir(j["job_id"])
+        if os.path.exists(os.path.join(art, "sections.json")):  # proxy for imaging jobs for now
+            have.append(j)
+    return TEMPLATES.TemplateResponse("protocols.html", {"request": req, "jobs": have})
+
 @router.get("/job/{job_id}", response_class=HTMLResponse)
 async def job(req: Request, job_id: str):
     return TEMPLATES.TemplateResponse("job.html", {"request": req, "job_id": job_id})

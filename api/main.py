@@ -17,6 +17,20 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
     try:
         write_status(job_id, "processing", started_at=datetime.now(timezone.utc).isoformat())
         pages = pdf_pages_text(pdf_path)
+        
+        # Save paper title & filename for UI (used in Queue/Protocols/Job header)
+        try:
+            first_line = (pages[0]["text"].splitlines()[0].strip() if pages and pages[0].get("text") else "")
+        except Exception:
+            first_line = ""
+        title = first_line if first_line else os.path.basename(pdf_path)
+        write_json(os.path.join(art_dir, "meta.json"), {
+            "title": title[:300],
+            "filename": os.path.basename(pdf_path)
+        })
+        # Update status to include title while processing
+        write_status(job_id, "processing", started_at=datetime.now(timezone.utc).isoformat(), title=title[:300])
+
         verdict = await imaging_verdict(pages)
         doc_flags = {
             "is_imaging": bool(verdict.get("is_imaging")),
@@ -50,7 +64,7 @@ async def upload(background_tasks: BackgroundTasks, paper: UploadFile = File(...
         f.write(await paper.read())
 
     # Non-blocking: schedule background processing and return immediately
-    write_status(job_id, "queued", created_at=datetime.now(timezone.utc).isoformat())
+    write_status(job_id, "processing", created_at=datetime.now(timezone.utc).isoformat())
     # Schedule the async worker directly; FastAPI will await it after sending the response
     background_tasks.add_task(_process_job_async, job_id, pdf_path, art_dir)
 

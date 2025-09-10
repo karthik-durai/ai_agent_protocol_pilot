@@ -12,7 +12,7 @@
         <tbody>
             {% for j in jobs %}
             <tr class="border-t">
-                <td class="pr-4 font-mono">{{ j.job_id }}</td>
+                <div class="font-medium">{{ j.title or j.job_id }}</div>
                 <td class="pr-4">
                     <span class="text-xs px-2 py-1 rounded bg-slate-100">{{ j.state }}</span>
                 </td>

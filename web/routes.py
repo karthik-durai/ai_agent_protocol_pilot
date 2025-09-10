@@ -15,7 +15,15 @@ async def home(req: Request):
 @router.get("/queue", response_class=HTMLResponse)
 async def queue(req: Request):
     jobs = list_jobs(200)
-    return TEMPLATES.TemplateResponse("queue.html", {"request": req, "jobs": jobs})
+    inflight = [j for j in jobs if j.get("state") in ("queued", "processing", "unknown")]
+    # attach title if available
+    for j in inflight:
+        meta_path = os.path.join(artifacts_dir(j["job_id"]), "meta.json")
+        j["title"] = None
+        if os.path.exists(meta_path):
+            with open(meta_path, "r", encoding="utf-8") as f:
+                j["title"] = (json.load(f) or {}).get("title")
+    return TEMPLATES.TemplateResponse("queue.html", {"request": req, "jobs": inflight})
 
 @router.get("/protocols", response_class=HTMLResponse)
 async def protocols(req: Request):
@@ -23,13 +31,24 @@ async def protocols(req: Request):
     have = []
     for j in jobs:
         art = artifacts_dir(j["job_id"])
-        if os.path.exists(os.path.join(art, "sections.json")):  # proxy for imaging jobs for now
-            have.append(j)
+        if os.path.exists(os.path.join(art, "sections.json")):
+            meta_path = os.path.join(art, "meta.json")
+            title = None
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    title = (json.load(f) or {}).get("title")
+            have.append({**j, "title": title})
     return TEMPLATES.TemplateResponse("protocols.html", {"request": req, "jobs": have})
 
 @router.get("/job/{job_id}", response_class=HTMLResponse)
 async def job(req: Request, job_id: str):
-    return TEMPLATES.TemplateResponse("job.html", {"request": req, "job_id": job_id})
+    art = artifacts_dir(job_id)
+    meta = {}
+    mp = os.path.join(art, "meta.json")
+    if os.path.exists(mp):
+        with open(mp, "r", encoding="utf-8") as f:
+            meta = json.load(f) or {}
+    return TEMPLATES.TemplateResponse("job.html", {"request": req, "job_id": job_id, "meta": meta})
 
 # Panels (HTMX fragments)
 @router.get("/job/{job_id}/panel/status", response_class=HTMLResponse)
@@ -56,3 +75,36 @@ async def sections_panel(req: Request, job_id: str):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f: data = json.load(f)
     return TEMPLATES.TemplateResponse("_sections.html", {"request": req, "data": data})
+
+@router.get("/quarantine", response_class=HTMLResponse)
+async def quarantine(req: Request):
+    jobs = list_jobs(200)
+    q = []
+    for j in jobs:
+        jid = j["job_id"]; art = artifacts_dir(jid)
+        # error jobs
+        if j.get("state") == "error":
+            pass_reason = "pipeline error"
+            title = None
+            meta_path = os.path.join(art, "meta.json")
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    title = (json.load(f) or {}).get("title")
+            q.append({"job_id": jid, "state": j["state"], "title": title, "reason": pass_reason})
+            continue
+        # non-imaging verdict
+        flags = os.path.join(art, "doc_flags.json")
+        if os.path.exists(flags):
+            try:
+                with open(flags, "r", encoding="utf-8") as f:
+                    df = json.load(f) or {}
+                if df.get("is_imaging") is False:
+                    title = None
+                    meta_path = os.path.join(art, "meta.json")
+                    if os.path.exists(meta_path):
+                        with open(meta_path, "r", encoding="utf-8") as mf:
+                            title = (json.load(mf) or {}).get("title")
+                    q.append({"job_id": jid, "state": j["state"], "title": title, "reason": "non-imaging"})
+            except Exception:
+                pass
+    return TEMPLATES.TemplateResponse("quarantine.html", {"request": req, "jobs": q})

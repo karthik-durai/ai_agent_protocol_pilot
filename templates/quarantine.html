@@ -1,11 +1,11 @@
 {% extends "base.html" %}{% block content %}
-<h1 class="text-xl font-semibold mb-4">Queue</h1>
+<h1 class="text-xl font-semibold mb-4">Quarantine</h1>
 <div class="bg-white rounded-xl shadow p-5">
     <table class="min-w-full text-sm">
         <thead>
             <tr class="text-left">
                 <th class="pr-4">Paper</th>
-                <th class="pr-4">State</th>
+                <th class="pr-4">Reason</th>
                 <th>Open</th>
             </tr>
         </thead>
@@ -16,12 +16,14 @@
                     <div class="font-medium">{{ j.title or 'Untitled' }}</div>
                     <div class="font-mono text-xs text-slate-500">{{ j.job_id }}</div>
                 </td>
-                <td class="pr-4"><span class="text-xs px-2 py-1 rounded bg-slate-100">{{ j.state }}</span></td>
+                <td class="pr-4">
+                    <span class="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700">{{ j.reason }}</span>
+                </td>
                 <td><a class="text-indigo-600" href="/job/{{ j.job_id }}">View</a></td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="3" class="text-slate-500 py-3">Nothing in-flight.</td>
+                <td colspan="3" class="text-slate-500 py-3">No quarantined jobs.</td>
             </tr>
             {% endfor %}
         </tbody>

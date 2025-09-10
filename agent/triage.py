@@ -2,28 +2,36 @@ import fitz  # PyMuPDF
 from typing import List, Dict, Any
 from .llm_client import llm_json
 
-IMAGING_VERDICT_SYS = "You are an expert scientific classifier. Output STRICT JSON only."
-IMAGING_VERDICT_USER_TMPL = """Decide if this paper is about medical imaging methods.
+IMAGING_VERDICT_SYS = "You are an expert scientific classifier for detecting whether a scientific paper reports medical imaging methods. Output STRICT JSON only. Prioritize recall: if any acquisition parameters, modality indicators, or sequence/reconstruction jargon are present, classify as imaging with appropriate confidence. Only classify as non-imaging when none of these cues are present in the provided text."
+IMAGING_VERDICT_USER_TMPL = """Decide whether this paper is about medical imaging methods or clearly includes imaging acquisition details that support reproducibility.
 
-TITLE:
-{title}
+EARLY PAGES TEXT (title + first pages, truncated):
+\"\"\"
+{early_text}
+\"\"\"
 
-ABSTRACT/INTRO (if any):
-{abstract}
+CUES TO LOOK FOR (non-exhaustive):
+- CT: kVp, mAs, tube current, collimation, pitch, slice thickness, reconstruction kernel/filter (e.g., B30f, FCxx), FBP/IR/MBIR (ASiR/Veo), FOV, voxel size, matrix, convolution kernel
+- MRI: TR, TE, TI, flip angle, field strength (e.g., 1.5T/3T/7T), coil (e.g., 8‑channel), EPI/echo‑planar, spin‑echo/gradient‑echo, T1‑weighted/T2‑weighted/FLAIR, DWI with b‑values, DCE
+- PET/SPECT: SUV, MBq, acquisition time/bed, OSEM iterations/subsets, TOF, PSF, attenuation correction (CT‑based), sinogram, list‑mode
+- Ultrasound: transducer MHz, probe type, focal depth, Doppler, B‑mode, cine
+- X‑ray/Radiography/CBCT: kVp, mAs, SID, grid, detector, cone‑beam
+- General: voxel size, registration, normalization, resampling, reconstruction algorithm, kernel
 
 Return exactly:
 {{
   "is_imaging": true|false,
   "modalities": ["CT","MRI","PET","SPECT","Ultrasound","X-ray","CBCT","PET/CT","PET/MRI"],
   "confidence": 0.0-1.0,
-  "reasons": ["..."],
-  "counter_signals": ["..."]
+  "reasons": ["short concrete cues you used (≤3)"],
+  "counter_signals": ["why not imaging, if applicable (≤2)"]
 }}
 
 Rules:
-- Look for acquisition/parameter cues: kVp, mAs, slice thickness, kernel, voxel size, TR/TE, b-values, SUV, transducer, field strength, etc.
-- Prefer methods over casual mentions. STRICT JSON only.
-"""
+- If any unambiguous method cue appears, set "is_imaging": true (even if the modality is uncertain—leave modalities empty or inferred from jargon).
+- Ignore mentions that appear only in references or affiliations (e.g., "Department of Radiology") without method cues.
+- If uncertain, set confidence ≤ 0.6; when explicit parameters are present, use ≥ 0.7.
+- STRICT JSON only."""
 
 TITLE_SYS = "You are a careful bibliographic assistant. Extract ONLY the main paper title from noisy front-matter text. Output STRICT JSON."
 TITLE_USER_TMPL = """Given the following early-page text from a scientific PDF, extract the best guess of the paper TITLE.
@@ -76,9 +84,14 @@ def pdf_pages_text(pdf_path: str, max_pages: int = 40, max_chars: int = 1200) ->
     return out
 
 async def imaging_verdict(pages: List[Dict[str,Any]]) -> Dict[str,Any]:
-    title = (pages[0]["text"].splitlines()[0] if pages else "")[:300]
-    abstract = "\n".join(pages[0]["text"].splitlines()[1:8])[:1200] if pages else ""
-    user = IMAGING_VERDICT_USER_TMPL.format(title=title, abstract=abstract)
+    # Use the first 2–3 pages for better recall
+    early_blocks = []
+    for p in pages[:3]:
+        t = (p.get("text") or "").strip()
+        if t:
+            early_blocks.append(t)
+    early_text = ("\n\n".join(early_blocks))[:6000] if early_blocks else ""
+    user = IMAGING_VERDICT_USER_TMPL.format(early_text=early_text)
     try:
         return await llm_json(IMAGING_VERDICT_SYS, user)
     except Exception as e:

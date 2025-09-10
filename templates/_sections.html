@@ -1,0 +1,23 @@
+<div class="bg-white rounded-xl shadow p-5">
+  <h2 class="text-lg font-semibold mb-3">Candidate pages</h2>
+  {% if not data %}
+  <p class="text-sm text-slate-500">Waiting for sections.json…</p>
+  {% else %}
+  <ul class="divide-y">
+    {% for c in data.candidates %}
+    <li class="py-2">
+      <div class="flex justify-between">
+        <div>Page <span class="font-mono">{{ c.page }}</span></div>
+        <div class="text-xs">Score <span class="font-mono">{{ '%.2f'|format(c.score) }}</span></div>
+      </div>
+      <div class="text-xs text-slate-600">
+        Labels: {{ c.labels|join(', ') }}{% if c.modalities %} · Modalities: {{ c.modalities|join(', ') }}{% endif %}
+      </div>
+      {% if c.snippets %}
+      <div class="mt-1 text-sm bg-slate-50 p-2 rounded">{{ c.snippets[0] }}</div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>

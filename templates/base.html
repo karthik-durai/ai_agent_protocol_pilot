@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Protocol Pilot</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <header class="px-6 py-4 border-b bg-white">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <a class="text-xl font-semibold" href="/">Protocol Pilot</a>
+            <nav class="space-x-4 text-sm">
+                <a href="/" class="hover:underline">Home</a>
+            </nav>
+        </div>
+    </header>
+    <main class="max-w-5xl mx-auto px-6 py-6">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+
+</html>

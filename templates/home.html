@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <section class="col-span-2 bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-3">Upload a paper</h2>
+        <form method="post" action="/ui/upload" enctype="multipart/form-data" class="space-y-3">
+            <input type="file" name="paper" accept="application/pdf" class="block w-full" />
+            <button class="px-4 py-2 bg-indigo-600 text-white rounded">Upload</button>
+        </form>
+    </section>
+    <section class="bg-white rounded-xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-3">Recent jobs</h2>
+        <ul class="divide-y">
+            {% for j in jobs %}
+            <li class="py-2 flex justify-between">
+                <a href="/job/{{ j.job_id }}" class="font-mono text-sm">{{ j.job_id }}</a>
+                <span class="text-xs px-2 py-1 rounded bg-slate-100">{{ j.state }}</span>
+            </li>
+            {% else %}
+            <li class="text-sm text-slate-500">No jobs yet.</li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+<div class="bg-white rounded-xl shadow p-5">
+    <h2 class="text-lg font-semibold mb-3">Imaging verdict</h2>
+    {% if not data %}
+    <p class="text-sm text-slate-500">Waiting for doc_flags.json…</p>
+    {% else %}
+    <div class="text-sm">
+        <div>Imaging: <strong>{{ 'Yes' if data.is_imaging else 'No' }}</strong>
+            {% if data.modalities %} · Modalities: {{ data.modalities|join(', ') }}{% endif %}
+            · Confidence: {{ '%.2f'|format(data.confidence or 0) }}
+        </div>
+        {% if data.reasons %}
+        <ul class="list-disc ml-5 mt-2">
+            {% for r in data.reasons[:3] %}<li class="text-slate-600">{{ r }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

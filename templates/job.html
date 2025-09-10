@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block content %}
+<h1 class="text-xl font-semibold mb-4">Job <span class="font-mono">{{ job_id }}</span></h1>
+
+<div id="status" hx-get="/job/{{ job_id }}/panel/status" hx-trigger="load, every 3s" class="mb-4"></div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div id="docflags" hx-get="/job/{{ job_id }}/panel/docflags" hx-trigger="load, every 3s"></div>
+
+    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 3s"></div>
+</div>
+{% endblock %}

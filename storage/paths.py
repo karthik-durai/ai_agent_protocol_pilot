@@ -1,4 +1,4 @@
-import os, json, time, secrets
+import os, json, time, secrets, glob
 DATA_ROOT = os.getenv("DATA_ROOT", os.path.abspath("./data"))
 
 def ensure_dirs(job_id: str):
@@ -15,3 +15,34 @@ def new_job_id() -> str:
 def write_json(path: str, obj):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
+
+def artifacts_dir(job_id: str) -> str:
+    d = os.path.join(DATA_ROOT, "artifacts", job_id)
+    os.makedirs(d, exist_ok=True); return d
+
+def status_path(job_id: str) -> str:
+    return os.path.join(artifacts_dir(job_id), "status.json")
+
+def write_status(job_id: str, state: str, **extra):
+    rec = {"state": state, **extra}
+    write_json(status_path(job_id), rec)
+    return rec
+
+def read_status(job_id: str):
+    p = status_path(job_id)
+    if not os.path.exists(p): return {"state": "unknown"}
+    with open(p, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def list_jobs(limit: int = 50):
+    roots = sorted(
+        glob.glob(os.path.join(DATA_ROOT, "artifacts", "*")),
+        key=lambda p: os.path.getmtime(p),
+        reverse=True
+    )[:limit]
+    out = []
+    for r in roots:
+        jid = os.path.basename(r)
+        st = read_status(jid)
+        out.append({"job_id": jid, "state": st.get("state", "unknown")})
+    return out

@@ -4,7 +4,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
 from pydantic import BaseModel
 from storage.paths import ensure_dirs, new_job_id, write_json, artifacts_dir, read_status, write_status, list_jobs
-from agent.triage import pdf_pages_text, imaging_verdict, triage_pages
+from agent.triage import pdf_pages_text, imaging_verdict, triage_pages, infer_title
 
 app = FastAPI(title="Protocol Pilot (lite)")
 
@@ -18,18 +18,29 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
         write_status(job_id, "processing", started_at=datetime.now(timezone.utc).isoformat())
         pages = pdf_pages_text(pdf_path)
         
-        # Save paper title & filename for UI (used in Queue/Protocols/Job header)
+        # Infer paper title with LLM (fallback to heuristic first line or filename)
+        ti = await infer_title(pages)
+        llm_title = (ti.get("title") or "").strip()
+        title_conf = float(ti.get("confidence", 0) or 0)
+
+        # Heuristic fallback if LLM uncertain or empty
         try:
             first_line = (pages[0]["text"].splitlines()[0].strip() if pages and pages[0].get("text") else "")
         except Exception:
             first_line = ""
-        title = first_line if first_line else os.path.basename(pdf_path)
+        fallback_title = first_line if first_line else os.path.basename(pdf_path)
+
+        title_final = llm_title if llm_title else fallback_title
         write_json(os.path.join(art_dir, "meta.json"), {
-            "title": title[:300],
-            "filename": os.path.basename(pdf_path)
+            "title": title_final[:300],
+            "filename": os.path.basename(pdf_path),
+            "title_confidence": title_conf
         })
         # Update status to include title while processing
-        write_status(job_id, "processing", started_at=datetime.now(timezone.utc).isoformat(), title=title[:300])
+        write_status(job_id, "processing",
+                     started_at=datetime.now(timezone.utc).isoformat(),
+                     title=title_final[:300],
+                     title_confidence=title_conf)
 
         verdict = await imaging_verdict(pages)
         doc_flags = {
@@ -87,7 +98,7 @@ async def ui_upload(background_tasks: BackgroundTasks, paper: UploadFile = File(
     with open(pdf_path, "wb") as f:
         f.write(await paper.read())
 
-    write_status(job_id, "queued", created_at=datetime.now(timezone.utc).isoformat())
+    write_status(job_id, "processing", created_at=datetime.now(timezone.utc).isoformat())
     background_tasks.add_task(_process_job_async, job_id, pdf_path, art_dir)
 
     # Redirect to the job viewer page (handled by web.routes)

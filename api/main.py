@@ -16,7 +16,7 @@ class UploadResp(BaseModel):
 async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
     try:
         write_status(job_id, "processing", started_at=datetime.now(timezone.utc).isoformat())
-        pages = pdf_pages_text(pdf_path)
+        pages = pdf_pages_text(pdf_path, to_json_path=os.path.join(art_dir, "pages.json"))
         
         # Infer paper title with LLM (fallback to heuristic first line or filename)
         ti = await infer_title(pages)

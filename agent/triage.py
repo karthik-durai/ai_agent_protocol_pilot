@@ -1,6 +1,8 @@
 import fitz  # PyMuPDF
+import os, hashlib
 from typing import List, Dict, Any
 from .llm_client import llm_json
+from storage.paths import write_json
 
 IMAGING_VERDICT_SYS = "You are an expert scientific classifier for detecting whether a scientific paper reports medical imaging methods. Output STRICT JSON only. Prioritize recall: if any acquisition parameters, modality indicators, or sequence/reconstruction jargon are present, classify as imaging with appropriate confidence. Only classify as non-imaging when none of these cues are present in the provided text."
 IMAGING_VERDICT_USER_TMPL = """Decide whether this paper is about medical imaging methods or clearly includes imaging acquisition details that support reproducibility.
@@ -88,12 +90,37 @@ Rules:
 - STRICT JSON only.
 """
 
-def pdf_pages_text(pdf_path: str, max_pages: int = 40, max_chars: int = 1200) -> List[Dict[str, Any]]:
+def pdf_pages_text(
+    pdf_path: str,
+    *,
+    to_json_path: str | None = None
+) -> List[Dict[str, Any]]:
     doc = fitz.open(pdf_path)
     out = []
-    for i in range(min(max_pages, doc.page_count)):
+    total = doc.page_count
+    limit = total
+    for i in range(limit):
         t = (doc.load_page(i).get_text("text") or "").strip()
-        out.append({"page": i, "text": t[:max_chars]})
+        out.append({"page": i, "text": t})
+
+    if to_json_path:
+        # build payload and write pages.json side-effect
+        pages_payload = {
+            "version": 1,
+            "pdf_meta": {"filename": os.path.basename(pdf_path), "page_count": total},
+            "pages": [
+                {
+                    "page": p["page"],
+                    "chars": len(p["text"]),
+                    "sha1": hashlib.sha1(p["text"].encode("utf-8", "ignore")).hexdigest(),
+                    "text": p["text"],
+                }
+                for p in out
+            ],
+        }
+        # call your existing writer (prefer atomic replace inside it)
+        write_json(to_json_path, pages_payload)
+
     return out
 
 async def imaging_verdict(pages: List[Dict[str,Any]]) -> Dict[str,Any]:

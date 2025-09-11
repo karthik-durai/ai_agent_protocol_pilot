@@ -33,24 +33,37 @@ Rules:
 - If uncertain, set confidence ≤ 0.6; when explicit parameters are present, use ≥ 0.7.
 - STRICT JSON only."""
 
-TITLE_SYS = "You are a careful bibliographic assistant. Extract ONLY the main paper title from noisy front-matter text. Output STRICT JSON."
-TITLE_USER_TMPL = """Given the following early-page text from a scientific PDF, extract the best guess of the paper TITLE.
+TITLE_SYS = "You are a careful bibliographic assistant for scientific PDFs. Extract ONLY the main article title from noisy front-matter. Output STRICT JSON. Do not output section headings, running heads, short titles, or journal/affiliation/footer text. De-hyphenate words split across line breaks, collapse whitespace, and keep the full title (including any subtitle after a colon) as it appears."
+TITLE_USER_TMPL = """From the early pages of a scientific PDF, extract the MAIN ARTICLE TITLE.
 
-EARLY_PAGES_TEXT (truncated):
+TEXT (truncated, may include headers/footers/authors/sections):
 \"\"\"
 {early_text}
 \"\"\"
 
+POSITIVE CUES (helpful if present):
+- A prominent heading above author names and before Abstract/Introduction
+- Title-cased sentence (may span multiple lines), often centered
+- May include a subtitle after a colon
+
+NEGATIVE CUES (must NOT be returned as title):
+- Section labels: Abstract, Introduction, Methods/Materials and Methods, Results, Discussion, Conclusion(s), Acknowledgments, References, Supplementary, Appendix
+- Meta/front-matter: Keywords, Highlights, Graphical abstract, Running head, Short title, Correspondence, Received/Accepted dates, DOI/URL, ORCID
+- Journal/Publisher strings: ©, Elsevier, Springer, Wiley, arXiv/bioRxiv/medRxiv banners, “Preprint”
+- Affiliations/emails/addresses/departments; author lists
+
 Return exactly:
 {{
-  "title": "the exact title string as it appears (cleaned of linebreaks, no authors/affiliations/sections)",
+  "title": "the exact main title string as it appears (linebreaks removed; de-hyphenated)",
   "confidence": 0.0-1.0,
-  "reasons": ["short bullets on why this is the title (<=2)"]
+  "reasons": ["why this is the title (≤2, short)"]
 }}
 
 Rules:
-- Prefer the largest, first centered heading prior to abstract/introduction.
-- Remove author lists, affiliations, emails, footers/headers, and section headings like 'Abstract'.
+- Keep the complete title including subtitle after a colon if present.
+- Remove surrounding author/affiliation lines, section labels, and headers/footers.
+- If multiple plausible candidates exist, choose the one immediately preceding the Abstract/Introduction and with length 6–25 words (40–200 chars) when possible.
+- Penalize ALL-CAPS short lines (likely running heads) and strings containing journal/publisher terms.
 - If uncertain, set confidence ≤ 0.6.
 - STRICT JSON only."""
 

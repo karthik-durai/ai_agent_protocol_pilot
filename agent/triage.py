@@ -4,34 +4,53 @@ from typing import List, Dict, Any
 from .llm_client import llm_json
 from storage.paths import write_json
 
-IMAGING_VERDICT_SYS = "You are an expert scientific classifier for detecting whether a scientific paper reports medical imaging methods. Output STRICT JSON only. Prioritize recall: if any acquisition parameters, modality indicators, or sequence/reconstruction jargon are present, classify as imaging with appropriate confidence. Only classify as non-imaging when none of these cues are present in the provided text."
-IMAGING_VERDICT_USER_TMPL = """Decide whether this paper is about medical imaging methods or clearly includes imaging acquisition details that support reproducibility.
+# ---- MRI-only canonical modalities + normalizer ----
+CANONICAL_MODALITIES = ["MRI"]
+
+def normalize_modalities(items):
+    """Return ['MRI'] if any entry clearly refers to MRI; else []."""
+    if not items:
+        return []
+    out = []
+    for m in items:
+        s = (m or "").strip().lower()
+        if s in {"mri", "mr"} and "MRI" not in out:
+            out.append("MRI")
+    return out
+
+IMAGING_VERDICT_SYS = (
+    "You are an expert scientific classifier for detecting whether a paper reports MRI acquisition methods. "
+    "Output STRICT JSON only. Prioritize precision: classify as imaging ONLY when unambiguous MRI method cues "
+    "(parameters or sequence/jargon) appear in the provided text. If cues are weak/ambiguous, classify as non-imaging. "
+    "Standardize modality names to: MRI."
+)
+
+IMAGING_VERDICT_USER_TMPL = """Decide whether this paper is about MRI methods or clearly includes MRI acquisition details that support reproducibility.
 
 EARLY PAGES TEXT (title + first pages, truncated):
 \"\"\"
 {early_text}
 \"\"\"
 
-CUES TO LOOK FOR (non-exhaustive):
-- CT: kVp, mAs, tube current, collimation, pitch, slice thickness, reconstruction kernel/filter (e.g., B30f, FCxx), FBP/IR/MBIR (ASiR/Veo), FOV, voxel size, matrix, convolution kernel
-- MRI: TR, TE, TI, flip angle, field strength (e.g., 1.5T/3T/7T), coil (e.g., 8‑channel), EPI/echo‑planar, spin‑echo/gradient‑echo, T1‑weighted/T2‑weighted/FLAIR, DWI with b‑values, DCE
-- PET/SPECT: SUV, MBq, acquisition time/bed, OSEM iterations/subsets, TOF, PSF, attenuation correction (CT‑based), sinogram, list‑mode
-- Ultrasound: transducer MHz, probe type, focal depth, Doppler, B‑mode, cine
-- X‑ray/Radiography/CBCT: kVp, mAs, SID, grid, detector, cone‑beam
-- General: voxel size, registration, normalization, resampling, reconstruction algorithm, kernel
+MRI CUES (non-exhaustive):
+- TR, TE, TI, flip angle
+- Field strength (1.5T, 3T, 7T), coil (e.g., 8‑channel head)
+- Sequence names: T1‑weighted/T2‑weighted, FLAIR, DWI, EPI, GRE/SE, MPRAGE/MP‑RAGE, TSE/RARE
+- Spatial params: in‑plane resolution (e.g., 0.8×0.8 mm), slice thickness (mm)
+- Other: acceleration (GRAPPA/SENSE, multiband), echo train length, bandwidth
 
 Return exactly:
 {{
   "is_imaging": true|false,
-  "modalities": ["CT","MRI","PET","SPECT","Ultrasound","X-ray","CBCT","PET/CT","PET/MRI"],
+  "modalities": ["MRI"] or [],
   "confidence": 0.0-1.0,
   "reasons": ["short concrete cues you used (≤3)"],
-  "counter_signals": ["why not imaging, if applicable (≤2)"]
+  "counter_signals": ["why not MRI, if applicable (≤2)"]
 }}
 
 Rules:
-- If any unambiguous method cue appears, set "is_imaging": true (even if the modality is uncertain—leave modalities empty or inferred from jargon).
-- Ignore mentions that appear only in references or affiliations (e.g., "Department of Radiology") without method cues.
+- Require at least ONE hard MRI cue (e.g., TR/TE/flip, 3T, FLAIR/EPI, in‑plane mm) to set "is_imaging": true; otherwise set false.
+- Ignore affiliations/references (e.g., “Department of Radiology”) without method cues.
 - If uncertain, set confidence ≤ 0.6; when explicit parameters are present, use ≥ 0.7.
 - STRICT JSON only."""
 
@@ -70,7 +89,7 @@ Rules:
 - STRICT JSON only."""
 
 PAGE_CLASS_SYS = "You are a precise scientific text classifier. Output STRICT JSON only."
-PAGE_CLASS_USER_TMPL = """From this page TEXT, decide if it contains imaging acquisition/method details and list modalities.
+PAGE_CLASS_USER_TMPL = """From this page TEXT, decide if it contains MRI acquisition/method details and list modalities.
 
 TEXT:
 \"\"\"
@@ -80,15 +99,19 @@ TEXT:
 Return exactly:
 {{
   "labels": ["methods","acquisition","preprocessing","table","other"],
-  "modalities": ["..."],
+  "modalities": ["MRI"] or [],
   "score": 0.0-1.0,
   "evidence": ["short substrings from the page (<=3)"]
 }}
 
 Rules:
-- Only include modalities supported by text (e.g., TR/TE->MRI; kVp/mAs->CT; SUV->PET; transducer->Ultrasound).
+- Only include "MRI" when explicit method cues appear (e.g., TR/TE -> MRI; 1.5T/3T/7T; FLAIR/EPI; in‑plane mm; coil).
+- If the page lacks hard cues, set labels ["other"], modalities [], score 0.0.
 - STRICT JSON only.
 """
+
+# Stricter acceptance threshold for page-level classifier to reduce false positives
+PAGE_SCORE_MIN = 0.65
 
 def pdf_pages_text(
     pdf_path: str,
@@ -133,7 +156,13 @@ async def imaging_verdict(pages: List[Dict[str,Any]]) -> Dict[str,Any]:
     early_text = ("\n\n".join(early_blocks))[:6000] if early_blocks else ""
     user = IMAGING_VERDICT_USER_TMPL.format(early_text=early_text)
     try:
-        return await llm_json(IMAGING_VERDICT_SYS, user)
+        resp = await llm_json(IMAGING_VERDICT_SYS, user)
+        # Normalize and enforce MRI-only decision
+        resp["modalities"] = normalize_modalities(resp.get("modalities") or [])
+        conf = float(resp.get("confidence") or 0.0)
+        if resp.get("is_imaging") and ("MRI" not in resp["modalities"] or conf < 0.7):
+            resp["is_imaging"] = False
+        return resp
     except Exception as e:
         # Fail-safe: treat as non-imaging with an explanatory reason
         return {
@@ -184,9 +213,9 @@ async def triage_pages(pages: List[Dict[str,Any]], top_k: int = 6) -> Dict[str,A
             # Skip this page on LLM failure; continue processing others
             continue
         labels = set(resp.get("labels") or [])
-        mods = resp.get("modalities") or []
+        mods = normalize_modalities(resp.get("modalities") or [])
         score = float(resp.get("score", 0) or 0)
-        if (("methods" in labels) or ("acquisition" in labels) or mods) and score > 0:
+        if (("methods" in labels) or ("acquisition" in labels) or ("MRI" in mods)) and score >= PAGE_SCORE_MIN:
             results.append({
                 "page": p["page"],
                 "score": score,

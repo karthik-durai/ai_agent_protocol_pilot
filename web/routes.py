@@ -98,16 +98,23 @@ async def protocol_card_panel(req: Request, job_id: str):
     except Exception:
         fields = {}
 
-    order = ["slice_thickness_mm","kernel","kernel_family","kVp","mAs","voxel_size_mm","matrix","fov_mm"]
+    order = [
+        "sequence_type",
+        "TR_ms",
+        "TE_ms",
+        "flip_deg",
+        "field_strength_T",
+        "inplane_res_mm",
+        "slice_thickness_mm",
+    ]
     labels = {
-        "slice_thickness_mm": "Slice thickness",
-        "kernel": "Reconstruction kernel",
-        "kernel_family": "Kernel family",
-        "kVp": "kVp",
-        "mAs": "mAs",
-        "voxel_size_mm": "Voxel size (mm)",
-        "matrix": "Matrix",
-        "fov_mm": "FOV (mm)"
+        "sequence_type": "Sequence type",
+        "TR_ms": "TR (ms)",
+        "TE_ms": "TE (ms)",
+        "flip_deg": "Flip (°)",
+        "field_strength_T": "Field strength (T)",
+        "inplane_res_mm": "In‑plane res (mm)",
+        "slice_thickness_mm": "Slice thickness (mm)",
     }
 
     return TEMPLATES.TemplateResponse(

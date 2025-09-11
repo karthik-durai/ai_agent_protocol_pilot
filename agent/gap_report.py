@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import json
@@ -62,16 +61,53 @@ def _to_float(x) -> Optional[float]:
 
 def _norm_units_value(field: str, value: Any, units: str) -> Any:
     """
-    Normalize obvious units for comparison. We keep values in canonical forms:
-      - thickness, fov, voxel_size -> mm
-      - kVp -> int
-      - mAs -> float
-      - matrix -> [int,int]
-      - kernel, kernel_family -> str (trimmed)
+    Normalize obvious units for comparison (MRI). Canonical forms:
+      - TR_ms, TE_ms -> ms (float)
+      - flip_deg -> deg (float)
+      - field_strength_T -> Tesla (float)
+      - inplane_res_mm -> [x,y] in mm (floats)
+      - slice_thickness_mm -> mm (float)
+      - sequence_type -> lowercase trimmed string
     """
     u = (units or "").strip().lower()
 
-    if field in ("slice_thickness_mm", "fov_mm"):
+    if field in ("TR_ms", "TE_ms"):
+        v = _to_float(value)
+        if v is None:
+            return None
+        # convert seconds to ms if units indicate seconds
+        if u in {"s", "sec", "second", "seconds"}:
+            v *= 1000.0
+        return v
+
+    if field == "flip_deg":
+        v = _to_float(value)
+        return v
+
+    if field == "field_strength_T":
+        v = _to_float(value)
+        return v
+
+    if field == "inplane_res_mm":
+        # expect [x,y] floats; allow single isotropic number
+        if isinstance(value, list):
+            out: List[float] = []
+            for a in value:
+                fv = _to_float(a)
+                if fv is None:
+                    return None
+                out.append(fv)
+            if len(out) == 1:
+                out = [out[0], out[0]]
+            if len(out) != 2:
+                return None
+            return out
+        v = _to_float(value)
+        if v is not None:
+            return [v, v]
+        return None
+
+    if field == "slice_thickness_mm":
         v = _to_float(value)
         if v is None:
             return None
@@ -81,64 +117,23 @@ def _norm_units_value(field: str, value: Any, units: str) -> Any:
             v /= 1000.0
         return v
 
-    if field == "kVp":
-        v = _to_float(value)
-        return int(v) if v is not None else None
-
-    if field == "mAs":
-        v = _to_float(value)
-        return v
-
-    if field == "voxel_size_mm":
-        # expect [x,y,z] floats; allow single isotropic number
-        if isinstance(value, list):
-            out: List[float] = []
-            for a in value:
-                fv = _to_float(a)
-                if fv is None:
-                    return None
-                out.append(fv)
-            if len(out) == 2:
-                out.append(out[-1])  # pad for comparison only
-            if len(out) != 3:
-                return None
-            return out
-        v = _to_float(value)
-        if v is not None:
-            return [v, v, v]
-        return None
-
-    if field == "matrix":
-        if isinstance(value, list) and len(value) == 2:
-            try:
-                return [int(value[0]), int(value[1])]
-            except Exception:
-                return None
-        # try parsing "512x512"
+    if field == "sequence_type":
         try:
-            s = str(value).lower().replace("×", "x")
-            a, b = s.split("x")
-            return [int(a.strip()), int(b.strip())]
+            return str(value).strip().lower()
         except Exception:
             return None
 
-    if field in ("kernel", "kernel_family"):
-        return str(value).strip()
-
+    # Fallback: return as-is
     return value
 
 def _group_key(field: str, value: Any) -> Any:
     if value is None:
         return None
-    if field in ("slice_thickness_mm", "fov_mm", "mAs"):
+    if field in ("TR_ms", "TE_ms", "flip_deg", "field_strength_T", "slice_thickness_mm"):
         return round(float(value), 3)
-    if field == "kVp":
-        return int(value)
-    if field == "voxel_size_mm":
-        return tuple(round(float(v), 3) for v in value) if isinstance(value, list) else None
-    if field == "matrix":
-        return tuple(int(v) for v in value) if isinstance(value, list) else None
-    if field in ("kernel", "kernel_family"):
+    if field == "inplane_res_mm":
+        return tuple(round(float(v), 3) for v in value) if isinstance(value, list) and len(value) == 2 else None
+    if field == "sequence_type":
         return str(value).strip().lower()
     return value
 
@@ -174,7 +169,13 @@ def _representatives_by_field(cands: List[Dict[str, Any]]) -> Dict[str, Dict[Any
 # Prompt assembly
 # -----------------------------
 _FIELDS_ORDER = [
-    "slice_thickness_mm","kernel","kernel_family","kVp","mAs","voxel_size_mm","matrix","fov_mm"
+    "sequence_type",
+    "TR_ms",
+    "TE_ms",
+    "flip_deg",
+    "field_strength_T",
+    "inplane_res_mm",
+    "slice_thickness_mm",
 ]
 
 def _representatives_sorted(cands: List[Dict[str, Any]], per_field_limit: int = 5) -> Dict[str, List[Dict[str, Any]]]:
@@ -210,23 +211,21 @@ def _group_candidates_for_prompt(cands: List[Dict[str, Any]], per_field_limit: i
 # LLM prompts (STRICT JSON)
 # -----------------------------
 GAP_SYS = (
-    "You are a careful gap adjudicator for CT imaging methods. Using extracted winners "
-    "and grouped candidates with evidence, determine:\n"
-    "- missing fields (not extracted or very low confidence),\n"
-    "- ambiguous fields (multiple plausible values with similar confidence),\n"
-    "- conflicts (clearly disagreeing values beyond tolerance),\n"
+    "You are a careful gap adjudicator for MRI imaging methods. Using extracted winners "
+    "and grouped candidates with evidence, determine: "
+    "- missing fields (not extracted or very low confidence), "
+    "- ambiguous fields (multiple plausible values with similar confidence), "
+    "- conflicts (clearly disagreeing values beyond tolerance), "
     "and draft 1–3 short author questions to resolve the most impactful gaps.\n\n"
     "Thresholds (apply exactly):\n"
-    "- Low confidence (missing_low_conf): confidence < 0.50.\n"
+    "- Low confidence (missing_low_conf): confidence < 0.55.\n"
     "- Ambiguous: top two distinct values both ≥ 0.65 confidence and Δconfidence ≤ 0.10; "
-    "  for numeric/array fields values must be close (≈ ≤10% relative); for string fields "
-    "  (kernel/family) values are different strings.\n"
-    "- Conflicts: values disagree beyond tolerance:\n"
-    "  thickness ≥0.5 mm or ≥20% relative; kVp integers differ; mAs ≥25% relative; "
-    "  FOV ≥20 mm or ≥10% relative; voxel any axis >20%; matrix dimensions differ; "
-    "  kernel strings differ.\n"
-    "- Required fields (CT+common): slice_thickness_mm, kernel, kVp, mAs, matrix, voxel_size_mm, fov_mm. "
-    "  kernel_family is optional but can be ambiguous/conflicting.\n\n"
+    "  for numeric fields values must be close: TR/TE ≤ 10% relative; flip ≤ 3°; "
+    "  in‑plane each axis ≤ 0.2 mm or ≤ 10% (whichever larger); slice thickness ≤ 0.5 mm or ≤ 15%.\n"
+    "- Conflicts: values disagree beyond tolerance: TR/TE > 20% relative; flip ≥ 10°; "
+    "  field strength differs (e.g., 1.5T vs 3T); in‑plane any axis ≥ 0.5 mm or ≥ 20%; "
+    "  slice thickness ≥ 0.5 mm and ≥ 20%.\n"
+    "- Required MRI fields: sequence_type, TR_ms, TE_ms, flip_deg, field_strength_T, inplane_res_mm, slice_thickness_mm.\n\n"
     "Output STRICT JSON only in the requested schema. Do not invent values not supported by evidence."
 )
 
@@ -242,40 +241,40 @@ Return EXACTLY this JSON:
 {{
   "schema_version": 1,
   "policy": "llm_gap_v1",
-  "modality": ["CT"],
+  "modality": ["MRI"],
   "summary": {{ "missing": <int>, "ambiguous": <int>, "conflicts": <int>, "questions": <int> }},
-  "missing": ["kVp"],
-  "missing_low_conf": ["voxel_size_mm"],
+  "missing": ["TR_ms"],
+  "missing_low_conf": ["inplane_res_mm"],
   "ambiguous": [
     {{
-      "field": "kernel",
+      "field": "slice_thickness_mm",
       "options": [
-        {{"value": "B30f", "page": 12, "confidence": 0.84, "evidence": "reconstruction kernel: B30f"}},
-        {{"value": "B31f", "page": 12, "confidence": 0.80, "evidence": "kernel B31f"}}
+        {{"value": 1.0, "page": 5, "confidence": 0.72, "evidence": "slice thickness 1.0 mm"}},
+        {{"value": 1.2, "page": 6, "confidence": 0.71, "evidence": "thickness = 1.2 mm"}}
       ],
-      "reason": "two kernels in Methods with similar confidence"
+      "reason": "two close values with similar confidence"
     }}
   ],
   "conflicts": [
     {{
-      "field": "slice_thickness_mm",
-      "a": {{"value": 1.0, "page": 5, "confidence": 0.72}},
-      "b": {{"value": 2.5, "page": 6, "confidence": 0.74}},
-      "reason": "difference exceeds 0.5 mm and 20% thresholds"
+      "field": "TR_ms",
+      "a": {{"value": 2000, "page": 3, "confidence": 0.80}},
+      "b": {{"value": 4000, "page": 4, "confidence": 0.78}},
+      "reason": "values differ by >20% (EPI vs structural?)"
     }}
   ],
   "questions": [
     {{
-      "field": "kVp",
-      "question": "Please confirm the X-ray tube potential (kVp) used for the analyzed scans; we did not find a definitive value in the Methods.",
-      "rationale": "kVp missing from extracted fields; essential for reproducibility",
-      "evidence_pages": []
+      "field": "TR_ms",
+      "question": "Please confirm the repetition time (TR) used for the reported scans; we found differing values across sections.",
+      "rationale": "critical parameter with conflicting evidence",
+      "evidence_pages": [3,4]
     }},
     {{
-      "field": "kernel",
-      "question": "We found both 'B30f' and 'B31f' mentioned. Which reconstruction kernel was used for the dataset analyzed in Results?",
-      "rationale": "two plausible kernels with similar confidence",
-      "evidence_pages": [12]
+      "field": "inplane_res_mm",
+      "question": "Was the acquisition 1 mm isotropic or 0.8×0.8 mm in-plane?",
+      "rationale": "resolution ambiguity affecting pooling/comparison",
+      "evidence_pages": []
     }}
   ],
   "provenance": {{ "from_extracted": true, "from_candidates": true }}
@@ -315,7 +314,7 @@ def _write_stub_gap_report(art_dir: str, modalities: List[str], extracted_exists
     stub = {
         "schema_version": 1,
         "policy": "llm_gap_v1_stub",
-        "modality": modalities or ["CT"],
+        "modality": modalities or ["MRI"],
         "summary": {"missing": 0, "ambiguous": 0, "conflicts": 0, "questions": 0},
         "missing": [],
         "missing_low_conf": [],
@@ -349,7 +348,7 @@ async def build_gap_report_llm_async(art_dir: str) -> str:
     fields = extracted.get("fields") or {}
     candidates = _read_jsonl(candidates_path)
     flags = _read_json(flags_path)
-    modalities = flags.get("modalities") or ["CT"]
+    modalities = flags.get("modalities") or ["MRI"]
 
     extracted_exists = os.path.exists(extracted_path)
     candidates_exists = os.path.exists(candidates_path)

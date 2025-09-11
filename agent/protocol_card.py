@@ -11,9 +11,10 @@ EXTRACTED_FILENAME = "imaging_extracted.json"
 
 # --- M3a Step 2: strict-JSON extraction prompts (CT + common) ---
 EXTRACT_CT_SYS = (
-    "You are a precise information extraction model for CT imaging methods. "
+    "You are a precise information extraction model for MRI imaging methods. "
     "Extract only when the text gives explicit evidence. Anchor every value "
-    "to an exact substring. Normalize units to mm/kVp/mAs where applicable. "
+    "to an exact substring. Normalize MRI units to TR/TE in ms, flip in degrees, "
+    "field strength in Tesla, in‑plane resolution in mm, and slice thickness in mm. "
     "Output STRICT JSON only as specified. Do not include commentary."
 )
 
@@ -25,14 +26,13 @@ EXTRACT_CT_USER_TMPL = """TEXT WINDOW (may include tables/symbols/units):
 Center page index (zero-based): {center_page}
 
 FIELDS TO EXTRACT (emit ONLY when supported by explicit text):
-- slice_thickness_mm (mm, number) — e.g., "slice thickness 1.25 mm", "0.5 cm" → 5.0 mm
-- kernel (string) — e.g., "B30f", "FC13", "Bone", "Lung", "Standard"
-- kernel_family (string) — one of: soft_tissue | bone | lung | standard | detail | smooth | unknown
-- kVp (int) — e.g., "120 kVp"
-- mAs (number) — e.g., "150 mAs", "ref. mAs 200"
-- voxel_size_mm ([x,y,z] floats, mm) — e.g., "1×1×3 mm³", "1 mm isotropic" → [1,1,1]
-- matrix ([w,h] ints) — e.g., "512×512", "matrix 256x256"
-- fov_mm (mm, number) — e.g., "FOV 25 cm" → 250 mm
+- sequence_type (string) — e.g., T1w, T2w, FLAIR, DWI, EPI, GRE, SE, MPRAGE
+- TR_ms (number, ms) — e.g., \"TR = 2000 ms\", or \"TR = 2 s\" → 2000
+- TE_ms (number, ms) — e.g., \"TE = 30 ms\"
+- flip_deg (number, degrees) — e.g., \"flip angle 9°\", \"FA=9\"
+- field_strength_T (number, Tesla) — e.g., \"3T\", \"3.0 Tesla\"
+- inplane_res_mm ([x,y] numbers, mm) — e.g., \"0.8 × 0.8 mm\", \"1 mm isotropic\" → [1,1]
+- slice_thickness_mm (number, mm) — e.g., \"slice thickness 1.0 mm\"
 
 Return EXACTLY this JSON:
 {{
@@ -41,8 +41,8 @@ Return EXACTLY this JSON:
       "field": "<one of the fields above>",
       "page": <int page index to attribute (use the center page index unless evidence clearly refers to another)>,
       "raw_span": "<short exact substring from the text>",
-      "value": <number|string|[number,number,number]|[int,int]>,
-      "units": "<'mm'|'kVp'|'mAs'|''>",
+      "value": <number|string|[number,number]>,
+      "units": "<'ms'|'deg'|'T'|'mm'|''>",
       "evidence": "<short exact substring (<=100 chars)>",
       "confidence": <0.0-1.0>,
       "notes": "<optional, short>"
@@ -52,12 +52,12 @@ Return EXACTLY this JSON:
 
 Rules:
 - Emit entries only with direct textual support; DO NOT guess.
-- Normalize cm→mm (×10), μm→mm (÷1000) when applicable.
-- voxel_size_mm: accept "1x1x1 mm", "1×1×3 mm³", "1 mm isotropic" → [1,1,1].
-- matrix: parse "512x512" or "512 × 512" → [512,512].
-- kernel_family: infer from kernel when obvious (e.g., B30f→soft_tissue; B70→bone; “Lung”→lung); else "unknown".
+- Normalize TR seconds→ms; accept \"TR/TE=2000/30 ms\" shorthand and split accordingly.
+- Accept decimal comma (e.g., 2,0 s) and normalize.
+- For in‑plane resolution: parse \"1 mm isotropic\" → [1,1]; \"0.8 × 0.8 mm\" → [0.8,0.8].
 - If uncertain, set confidence ≤ 0.6.
 - STRICT JSON only."""
+
 
 def build_windows(pages: List[Dict[str, Any]], center_page: int, span: int = 1) -> tuple[str, int]:
     """
@@ -186,7 +186,7 @@ def _read_jsonl(path: str) -> List[Dict[str, Any]]:
     return items
 
 ADJ_SYS = (
-    "You are a careful adjudicator for CT imaging parameters. From multiple candidate "
+    "You are a careful adjudicator for MRI acquisition parameters. From multiple candidate "
     "extractions with evidence, choose the best value per field and explain briefly. "
     "Output STRICT JSON only. Do not invent values; omit a field if evidence is insufficient."
 )
@@ -198,26 +198,33 @@ ADJ_USER_TMPL = """CANDIDATES grouped by field. Each item: {{value, units, page,
 Return EXACTLY this JSON:
 {{
   "fields": {{
-    "slice_thickness_mm": {{"value": <number>, "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "kernel": {{"value": "<str>", "units": "", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "kernel_family": {{"value": "<soft_tissue|bone|lung|standard|detail|smooth|unknown>", "units": "", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "kVp": {{"value": <int>, "units": "kVp", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "mAs": {{"value": <number>, "units": "mAs", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "voxel_size_mm": {{"value": [<number>,<number>,<number>], "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "matrix": {{"value": [<int>,<int>], "units": "", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "fov_mm": {{"value": <number>, "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}}
+    "sequence_type": {{"value": "<str>", "units": "", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
+    "TR_ms": {{"value": <number>, "units": "ms", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
+    "TE_ms": {{"value": <number>, "units": "ms", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
+    "flip_deg": {{"value": <number>, "units": "deg", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
+    "field_strength_T": {{"value": <number>, "units": "T", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
+    "inplane_res_mm": {{"value": [<number>,<number>], "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
+    "slice_thickness_mm": {{"value": <number>, "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}}
   }}
 }}
 
 Rules:
 - Choose at most one best entry per field; omit a field if no solid evidence.
-- Prefer explicit labels (e.g., "slice thickness = …", "kernel: …").
-- Prefer higher confidence and clearer evidence; break ties with table-like phrasing or consistency with other fields.
-- Keep provided units; if you must convert, only cm→mm (×10).
+- Prefer explicit labels and table entries; prefer higher confidence; break ties with clearer evidence and consistency.
+- Units: TR/TE in ms, flip in deg, field strength in T, in‑plane in mm.
 - STRICT JSON only.
 """
 
-_FIELDS = ["slice_thickness_mm","kernel","kernel_family","kVp","mAs","voxel_size_mm","matrix","fov_mm"]
+
+_FIELDS = [
+    "sequence_type",
+    "TR_ms",
+    "TE_ms",
+    "flip_deg",
+    "field_strength_T",
+    "inplane_res_mm",
+    "slice_thickness_mm",
+]
 
 def _group_candidates_for_prompt(cands: List[Dict[str, Any]], per_field_limit: int = 5) -> str:
     by: Dict[str, List[Dict[str, Any]]] = {k: [] for k in _FIELDS}
@@ -251,27 +258,27 @@ def _coerce_field(fname: str, entry: Dict[str, Any]) -> Dict[str, Any] | None:
     c = entry.get("confidence", 0)
     r = (entry.get("reason") or "").strip()
     try:
-        if fname in ("slice_thickness_mm","fov_mm","mAs"):
+        if fname in ("TR_ms", "TE_ms", "flip_deg", "field_strength_T", "slice_thickness_mm"):
             v = float(v)
-        elif fname == "kVp":
-            v = int(v)
-        elif fname == "voxel_size_mm":
-            if isinstance(v, list) and len(v) == 3:
-                v = [float(v[0]), float(v[1]), float(v[2])]
+        elif fname == "inplane_res_mm":
+            if isinstance(v, list) and len(v) == 2:
+                v = [float(v[0]), float(v[1])]
             else:
                 return None
             u = "mm"
-        elif fname == "matrix":
-            if isinstance(v, list) and len(v) == 2:
-                v = [int(v[0]), int(v[1])]
-            else:
-                return None
-            u = ""
-        elif fname in ("kernel","kernel_family"):
+        elif fname == "sequence_type":
             v = str(v)
+            u = ""
         else:
             return None
-        return {"value": v, "units": u, "page": int(p), "evidence": e[:200], "confidence": float(c), "reason": r[:120]}
+        return {
+            "value": v,
+            "units": u,
+            "page": int(p) if p is not None else 0,
+            "evidence": e[:200],
+            "confidence": float(c),
+            "reason": r[:120],
+        }
     except Exception:
         return None
 

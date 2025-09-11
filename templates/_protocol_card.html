@@ -4,14 +4,52 @@
     </div>
 
     <div class="p-5">
-        {% if not fields %}
+        {# --- Resolve fields from multiple possible shapes --- #}
+        {% set ctx = fields if fields is defined else None %}
+        {% if not ctx and extracted is defined %}
+        {% if extracted.fields is defined %}
+        {% set ctx = extracted.fields %}
+        {% elif extracted.fields_by_modality is defined %}
+        {% set fbm = extracted.fields_by_modality %}
+        {% if fbm and 'MRI' in fbm %}
+        {% set ctx = fbm['MRI'] %}
+        {% endif %}
+        {% endif %}
+        {% endif %}
+
+        {# --- Default MRI order & labels if not provided --- #}
+        {% if order is not defined or not order %}
+        {% set order = [
+        'sequence_type',
+        'TR_ms',
+        'TE_ms',
+        'flip_deg',
+        'field_strength_T',
+        'inplane_res_mm',
+        'slice_thickness_mm'
+        ] %}
+        {% endif %}
+
+        {% if labels is not defined or not labels %}
+        {% set labels = {
+        'sequence_type': 'Sequence type',
+        'TR_ms': 'TR (ms)',
+        'TE_ms': 'TE (ms)',
+        'flip_deg': 'Flip (°)',
+        'field_strength_T': 'Field strength (T)',
+        'inplane_res_mm': 'In‑plane res (mm)',
+        'slice_thickness_mm': 'Slice thickness (mm)'
+        } %}
+        {% endif %}
+
+        {% if not ctx %}
         <p class="text-sm text-slate-500 italic">Waiting for extraction…</p>
         {% else %}
         <table class="w-full table-fixed">
             <tbody class="divide-y divide-slate-200">
                 {% for key in order %}
-                {% if key in fields %}
-                {% set e = fields[key] %}
+                {% if key in ctx %}
+                {% set e = ctx[key] %}
                 <tr>
                     <th class="w-48 py-2 pr-4 text-xs font-semibold uppercase tracking-wide text-slate-500 align-top">
                         {{ labels.get(key, key) }}

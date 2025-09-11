@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from storage.paths import ensure_dirs, new_job_id, write_json, artifacts_dir, read_status, write_status, list_jobs
 from agent.triage import pdf_pages_text, imaging_verdict, triage_pages, infer_title
 from agent.protocol_card import run_protocol_extraction_async
+from agent.gap_report import build_gap_report_llm_async
 
 app = FastAPI(title="Protocol Pilot (lite)")
 
@@ -59,6 +60,12 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
             # M3a Step 2: populate imaging_candidates.jsonl (safe, non-fatal)
             try:
                 await run_protocol_extraction_async(pages, sections, art_dir)
+            except Exception:
+                pass
+
+            # Gap Report (LLM-assisted): generate gaps & author-question suggestions (non-fatal)
+            try:
+                await build_gap_report_llm_async(art_dir)
             except Exception:
                 pass
 

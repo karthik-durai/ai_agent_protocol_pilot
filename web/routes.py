@@ -121,6 +121,34 @@ async def protocol_card_panel(req: Request, job_id: str):
         }
     )
 
+# Gap Report panel (read-only)
+@router.get("/job/{job_id}/panel/gap-report", response_class=HTMLResponse)
+async def gap_report_panel(req: Request, job_id: str):
+    """
+    Read-only Gap Report panel.
+    Renders artifacts/<job>/gap_report.json via Jinja template.
+    Shows a waiting state if the report is not present yet.
+    """
+    art = artifacts_dir(job_id)
+    path = os.path.join(art, "gap_report.json")
+
+    report = None
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                report = json.load(f) or None
+        except Exception:
+            report = None
+
+    return TEMPLATES.TemplateResponse(
+        "_gap_report.html",
+        {
+            "request": req,
+            "job_id": job_id,
+            "report": report,
+        }
+    )
+
 @router.get("/quarantine", response_class=HTMLResponse)
 async def quarantine(req: Request):
     jobs = list_jobs(200)

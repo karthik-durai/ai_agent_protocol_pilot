@@ -13,13 +13,18 @@
         hx-swap="outerHTML"></div>
 </div>
 
-<!-- Main content: Protocol Card (prominent) + Candidates side-by-side -->
+<!-- Main content: Left = Protocol Card + Gap Report, Right = Candidates -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-max">
-    <!-- Protocol Card first for prominence -->
-    <div id="protocol-card" hx-get="/job/{{ job_id }}/panel/protocol-card" hx-trigger="load, every 5s"
-        hx-swap="outerHTML"></div>
+    <!-- Left column (prominent): Protocol Card + Gap Report stacked -->
+    <div class="space-y-6">
+        <div id="protocol-card" hx-get="/job/{{ job_id }}/panel/protocol-card" hx-trigger="load, every 5s"
+            hx-swap="outerHTML"></div>
 
-    <!-- Methods/Acquisition candidate pages -->
+        <div id="gap-report" hx-get="/job/{{ job_id }}/panel/gap-report" hx-trigger="load, every 5s"
+            hx-swap="outerHTML"></div>
+    </div>
+
+    <!-- Right column: Methods/Acquisition candidate pages -->
     <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 5s" hx-swap="outerHTML"></div>
 </div>
 {% endblock %}

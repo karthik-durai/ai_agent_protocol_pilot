@@ -1,10 +1,11 @@
-import os, json, asyncio
+import os, json
 from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
-from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
 from storage.paths import ensure_dirs, new_job_id, write_json, artifacts_dir, read_status, write_status, list_jobs
 from agent.triage import pdf_pages_text, imaging_verdict, triage_pages, infer_title
+from agent.protocol_card import run_protocol_extraction_async
 
 app = FastAPI(title="Protocol Pilot (lite)")
 
@@ -55,6 +56,11 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
         if doc_flags["is_imaging"]:
             sections = await triage_pages(pages, top_k=6)
             write_json(os.path.join(art_dir, "sections.json"), sections)
+            # M3a Step 2: populate imaging_candidates.jsonl (safe, non-fatal)
+            try:
+                await run_protocol_extraction_async(pages, sections, art_dir)
+            except Exception:
+                pass
 
         write_status(job_id, "done", finished_at=datetime.now(timezone.utc).isoformat())
     except Exception as e:
@@ -75,7 +81,7 @@ async def upload(background_tasks: BackgroundTasks, paper: UploadFile = File(...
         f.write(await paper.read())
 
     # Non-blocking: schedule background processing and return immediately
-    write_status(job_id, "processing", created_at=datetime.now(timezone.utc).isoformat())
+    write_status(job_id, "queued", created_at=datetime.now(timezone.utc).isoformat())
     # Schedule the async worker directly; FastAPI will await it after sending the response
     background_tasks.add_task(_process_job_async, job_id, pdf_path, art_dir)
 
@@ -98,7 +104,7 @@ async def ui_upload(background_tasks: BackgroundTasks, paper: UploadFile = File(
     with open(pdf_path, "wb") as f:
         f.write(await paper.read())
 
-    write_status(job_id, "processing", created_at=datetime.now(timezone.utc).isoformat())
+    write_status(job_id, "queued", created_at=datetime.now(timezone.utc).isoformat())
     background_tasks.add_task(_process_job_async, job_id, pdf_path, art_dir)
 
     # Redirect to the job viewer page (handled by web.routes)
@@ -107,10 +113,19 @@ async def ui_upload(background_tasks: BackgroundTasks, paper: UploadFile = File(
 @app.get("/results/{job_id}/{name}")
 def get_artifact(job_id: str, name: str):
     art = os.path.join(os.getenv("DATA_ROOT","./data"), "artifacts", job_id, name)
-    if not os.path.exists(art): raise HTTPException(404, "not found")
-    with open(art, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return JSONResponse(data)
+    if not os.path.exists(art):
+        raise HTTPException(404, "not found")
+    # Try JSON first
+    try:
+        with open(art, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return JSONResponse(data)
+    except Exception:
+        # Fallback: serve as plain text (useful for .jsonl/NDJSON)
+        with open(art, "r", encoding="utf-8") as f:
+            text = f.read()
+        media = "application/x-ndjson" if name.endswith(".jsonl") else "text/plain"
+        return PlainTextResponse(text, media_type=media)
 
 from web.routes import router as viewer_router
 app.include_router(viewer_router)

@@ -67,6 +67,7 @@ async def docflags_panel(req: Request, job_id: str):
         with open(path, "r", encoding="utf-8") as f: data = json.load(f)
     return TEMPLATES.TemplateResponse("_docflags.html", {"request": req, "data": data})
 
+
 @router.get("/job/{job_id}/panel/sections", response_class=HTMLResponse)
 async def sections_panel(req: Request, job_id: str):
     art = artifacts_dir(job_id)
@@ -75,6 +76,50 @@ async def sections_panel(req: Request, job_id: str):
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f: data = json.load(f)
     return TEMPLATES.TemplateResponse("_sections.html", {"request": req, "data": data})
+
+
+# Protocol Card panel (read-only)
+@router.get("/job/{job_id}/panel/protocol-card", response_class=HTMLResponse)
+async def protocol_card_panel(req: Request, job_id: str):
+    """
+    Read-only Protocol Card panel.
+    Renders winners from artifacts/<job>/imaging_extracted.json via Jinja template.
+    Falls back to an empty state if extraction hasn't completed.
+    """
+    art = artifacts_dir(job_id)
+    path = os.path.join(art, "imaging_extracted.json")
+
+    fields = {}
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+            fields = data.get("fields") or {}
+    except Exception:
+        fields = {}
+
+    order = ["slice_thickness_mm","kernel","kernel_family","kVp","mAs","voxel_size_mm","matrix","fov_mm"]
+    labels = {
+        "slice_thickness_mm": "Slice thickness",
+        "kernel": "Reconstruction kernel",
+        "kernel_family": "Kernel family",
+        "kVp": "kVp",
+        "mAs": "mAs",
+        "voxel_size_mm": "Voxel size (mm)",
+        "matrix": "Matrix",
+        "fov_mm": "FOV (mm)"
+    }
+
+    return TEMPLATES.TemplateResponse(
+        "_protocol_card.html",
+        {
+            "request": req,
+            "job_id": job_id,
+            "fields": fields,
+            "order": order,
+            "labels": labels
+        }
+    )
 
 @router.get("/quarantine", response_class=HTMLResponse)
 async def quarantine(req: Request):

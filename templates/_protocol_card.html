@@ -1,0 +1,54 @@
+<div id="protocol-card" class="rounded-xl bg-white/80 backdrop-blur shadow-sm ring-1 ring-slate-200">
+    <div class="px-5 py-3 border-b border-slate-200">
+        <h3 class="text-base font-semibold text-slate-900">Protocol Card</h3>
+    </div>
+
+    <div class="p-5">
+        {% if not fields %}
+        <p class="text-sm text-slate-500 italic">Waiting for extraction…</p>
+        {% else %}
+        <table class="w-full table-fixed">
+            <tbody class="divide-y divide-slate-200">
+                {% for key in order %}
+                {% if key in fields %}
+                {% set e = fields[key] %}
+                <tr>
+                    <th class="w-48 py-2 pr-4 text-xs font-semibold uppercase tracking-wide text-slate-500 align-top">
+                        {{ labels.get(key, key) }}
+                    </th>
+                    <td class="py-2 text-sm text-slate-900">
+                        <div class="flex flex-wrap items-baseline gap-2">
+                            <span class="font-medium">
+                                {% if e.value is iterable and e.value is not string %}
+                                [{{ e.value | join(", ") }}]
+                                {% else %}
+                                {{ e.value }}
+                                {% endif %}
+                            </span>
+                            {% if e.units %}
+                            <span
+                                class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">
+                                {{ e.units }}
+                            </span>
+                            {% endif %}
+                        </div>
+
+                        <div class="mt-1 text-xs text-slate-500">
+                            p.{{ e.page }} • conf {{ "%.2f"|format(e.confidence or 0.0) }}
+                        </div>
+
+                        {% if e.evidence %}
+                        <div
+                            class="mt-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 overflow-x-auto">
+                            {{ e.evidence }}
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>

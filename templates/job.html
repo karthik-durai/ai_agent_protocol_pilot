@@ -1,14 +1,25 @@
 {% extends "base.html" %}{% block content %}
-<h1 class="text-xl font-semibold mb-4">
+<h1 class="text-xl font-semibold mb-6">
     {{ meta.title or ('Job ' ~ job_id) }}
     <span class="block font-mono text-xs text-slate-500">{{ job_id }}</span>
 </h1>
 
-<div id="status" hx-get="/job/{{ job_id }}/panel/status" hx-trigger="load, every 3s" class="mb-4"></div>
+<!-- Top strip: Status + Verdict (docflags) side-by-side -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+    <div id="status" class="md:col-span-2" hx-get="/job/{{ job_id }}/panel/status" hx-trigger="load, every 3s"
+        hx-swap="outerHTML"></div>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <div id="docflags" hx-get="/job/{{ job_id }}/panel/docflags" hx-trigger="load, every 3s"></div>
+    <div id="docflags" class="md:col-span-1" hx-get="/job/{{ job_id }}/panel/docflags" hx-trigger="load, every 5s"
+        hx-swap="outerHTML"></div>
+</div>
 
-    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 3s"></div>
+<!-- Main content: Protocol Card (prominent) + Candidates side-by-side -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-max">
+    <!-- Protocol Card first for prominence -->
+    <div id="protocol-card" hx-get="/job/{{ job_id }}/panel/protocol-card" hx-trigger="load, every 5s"
+        hx-swap="outerHTML"></div>
+
+    <!-- Methods/Acquisition candidate pages -->
+    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 5s" hx-swap="outerHTML"></div>
 </div>
 {% endblock %}

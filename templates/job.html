@@ -1,5 +1,5 @@
 {% extends "base.html" %}{% block content %}
-<h1 class="text-xl font-semibold mb-6">
+<h1 class="text-xl font-semibold mb-6" hx-trigger="load, every 3s" hx-swap="innerHTML">
     {{ meta.title or ('Job ' ~ job_id) }}
     <span class="block font-mono text-xs text-slate-500">{{ job_id }}</span>
 </h1>
@@ -7,10 +7,10 @@
 <!-- Top strip: Status + Verdict (docflags) side-by-side -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
     <div id="status" class="md:col-span-2" hx-get="/job/{{ job_id }}/panel/status" hx-trigger="load, every 3s"
-        hx-swap="outerHTML"></div>
+        hx-swap="innerHTML"></div>
 
     <div id="docflags" class="md:col-span-1" hx-get="/job/{{ job_id }}/panel/docflags" hx-trigger="load, every 5s"
-        hx-swap="outerHTML"></div>
+        hx-swap="innerHTML"></div>
 </div>
 
 <!-- Main content: Left = Protocol Card + Gap Report, Right = Candidates -->
@@ -18,13 +18,13 @@
     <!-- Left column (prominent): Protocol Card + Gap Report stacked -->
     <div class="space-y-6">
         <div id="protocol-card" hx-get="/job/{{ job_id }}/panel/protocol-card" hx-trigger="load, every 5s"
-            hx-swap="outerHTML"></div>
+            hx-swap="innerHTML"></div>
 
         <div id="gap-report" hx-get="/job/{{ job_id }}/panel/gap-report" hx-trigger="load, every 5s"
-            hx-swap="outerHTML"></div>
+            hx-swap="innerHTML"></div>
     </div>
 
     <!-- Right column: Methods/Acquisition candidate pages -->
-    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 5s" hx-swap="outerHTML"></div>
+    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
 </div>
 {% endblock %}

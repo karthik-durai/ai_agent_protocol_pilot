@@ -1,7 +1,8 @@
 {% extends "base.html" %}{% block content %}
-<h1 class="text-xl font-semibold mb-6" hx-trigger="load, every 3s" hx-swap="innerHTML">
+<h1 class="text-xl font-semibold mb-6" hx-get="/job/{{ job_id }}/panel/title" hx-trigger="load, every 3s" hx-swap="innerHTML">
     {{ meta.title or ('Job ' ~ job_id) }}
     <span class="block font-mono text-xs text-slate-500">{{ job_id }}</span>
+    
 </h1>
 
 <!-- Top strip: Status + Verdict (docflags) side-by-side -->

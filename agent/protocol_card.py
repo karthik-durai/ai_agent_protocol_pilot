@@ -10,8 +10,8 @@ from agent.schemas import ExtractionCandidates, AdjudicationResponse
 CANDIDATES_FILENAME = "imaging_candidates.jsonl"
 EXTRACTED_FILENAME = "imaging_extracted.json"
 
-# --- M3a Step 2: strict-JSON extraction prompts (CT + common) ---
-EXTRACT_CT_SYS = (
+# --- M3a Step 2: strict-JSON extraction prompts (MRI) ---
+EXTRACT_MRI_SYS = (
     "You are a precise information extraction model for MRI imaging methods. "
     "Extract only when the text gives explicit evidence. Anchor every value "
     "to an exact substring. Normalize MRI units to TR/TE in ms, flip in degrees, "
@@ -19,7 +19,7 @@ EXTRACT_CT_SYS = (
     "Output STRICT JSON only as specified. Do not include commentary."
 )
 
-EXTRACT_CT_USER_TMPL = """TEXT WINDOW (may include tables/symbols/units):
+EXTRACT_MRI_USER_TMPL = """TEXT WINDOW (may include tables/symbols/units):
 \"\"\"
 {window_text}
 \"\"\"
@@ -79,21 +79,21 @@ def build_windows(pages: List[Dict[str, Any]], center_page: int, span: int = 1) 
     window_text = "\n\n".join(chunks)
     return window_text, center_page
 
-async def extract_ct_common(window_text: str, center_page: int) -> List[Dict[str, Any]]:
+async def extract_mri_common(window_text: str, center_page: int) -> List[Dict[str, Any]]:
     """
     Call the LLM with strict JSON prompt and return a list of candidate dicts.
     Never raises on JSON issues—returns [] instead.
     """
     if not window_text.strip():
         return []
-    user = EXTRACT_CT_USER_TMPL.format(window_text=window_text, center_page=center_page)
+    user = EXTRACT_MRI_USER_TMPL.format(window_text=window_text, center_page=center_page)
     try:
-        parsed = await llm_json_typed(EXTRACT_CT_SYS, user, ExtractionCandidates)
+        parsed = await llm_json_typed(EXTRACT_MRI_SYS, user, ExtractionCandidates)
         items = parsed.candidates
     except Exception:
         # Fallback to untyped parsing if schema validation fails
         try:
-            resp = await llm_json(EXTRACT_CT_SYS, user)
+            resp = await llm_json(EXTRACT_MRI_SYS, user)
             items = resp.get("candidates") or []
         except Exception:
             return []
@@ -159,7 +159,7 @@ async def run_protocol_extraction_async(
                 if pidx < 0:
                     continue
                 window, center = build_windows(pages, pidx, span=1)
-                hits = await extract_ct_common(window, center)
+                hits = await extract_mri_common(window, center)
                 for h in hits:
                     outf.write(json.dumps(h, ensure_ascii=False) + "\n")
             except Exception:

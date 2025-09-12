@@ -1,8 +1,9 @@
 import fitz  # PyMuPDF
 import os, hashlib
 from typing import List, Dict, Any
-from .llm_client import llm_json
+from .llm_client import llm_json_typed
 from storage.paths import write_json
+from .schemas import ImagingVerdict as ImagingVerdictSchema, TitleResponse as TitleSchema, PageClassResponse as PageClassSchema
 
 # ---- MRI-only canonical modalities + normalizer ----
 CANONICAL_MODALITIES = ["MRI"]
@@ -156,7 +157,8 @@ async def imaging_verdict(pages: List[Dict[str,Any]]) -> Dict[str,Any]:
     early_text = ("\n\n".join(early_blocks))[:6000] if early_blocks else ""
     user = IMAGING_VERDICT_USER_TMPL.format(early_text=early_text)
     try:
-        resp = await llm_json(IMAGING_VERDICT_SYS, user)
+        parsed = await llm_json_typed(IMAGING_VERDICT_SYS, user, ImagingVerdictSchema)
+        resp = parsed.model_dump()
         # Normalize and enforce MRI-only decision
         resp["modalities"] = normalize_modalities(resp.get("modalities") or [])
         conf = float(resp.get("confidence") or 0.0)
@@ -185,9 +187,10 @@ async def infer_title(pages: List[Dict[str,Any]], max_pages: int = 2, max_chars:
         return {"title": "", "confidence": 0.0, "reasons": ["no text available"]}
     user = TITLE_USER_TMPL.format(early_text=early_text)
     try:
-        resp = await llm_json(TITLE_SYS, user)
+        parsed = await llm_json_typed(TITLE_SYS, user, TitleSchema)
     except Exception:
         return {"title": "", "confidence": 0.0, "reasons": ["llm error"]}
+    resp = parsed.model_dump()
     title = (resp.get("title") or "").strip()
     conf = float(resp.get("confidence", 0) or 0)
     reasons = resp.get("reasons") or []
@@ -208,10 +211,11 @@ async def triage_pages(pages: List[Dict[str,Any]], top_k: int = 6) -> Dict[str,A
             continue
         user = PAGE_CLASS_USER_TMPL.format(page_text=p["text"])
         try:
-            resp = await llm_json(PAGE_CLASS_SYS, user)
+            parsed = await llm_json_typed(PAGE_CLASS_SYS, user, PageClassSchema)
         except Exception:
             # Skip this page on LLM failure; continue processing others
             continue
+        resp = parsed.model_dump()
         labels = set(resp.get("labels") or [])
         mods = normalize_modalities(resp.get("modalities") or [])
         score = float(resp.get("score", 0) or 0)

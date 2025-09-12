@@ -5,4 +5,8 @@ PyMuPDF
 Jinja2
 python-multipart
 httpx
+langchain
+langchain-community
+langchain-ollama
+python-dotenv
 watchfiles

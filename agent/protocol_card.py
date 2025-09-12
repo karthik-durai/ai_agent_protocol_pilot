@@ -4,7 +4,8 @@ import os
 from typing import Any, Dict, List
 from storage.paths import write_json
 import json
-from agent.llm_client import llm_json
+from agent.llm_client import llm_json_typed, llm_json
+from agent.schemas import ExtractionCandidates, AdjudicationResponse
 
 CANDIDATES_FILENAME = "imaging_candidates.jsonl"
 EXTRACTED_FILENAME = "imaging_extracted.json"
@@ -87,21 +88,26 @@ async def extract_ct_common(window_text: str, center_page: int) -> List[Dict[str
         return []
     user = EXTRACT_CT_USER_TMPL.format(window_text=window_text, center_page=center_page)
     try:
-        resp = await llm_json(EXTRACT_CT_SYS, user)
+        parsed = await llm_json_typed(EXTRACT_CT_SYS, user, ExtractionCandidates)
+        items = parsed.candidates
     except Exception:
-        return []
-    items = resp.get("candidates") or []
+        # Fallback to untyped parsing if schema validation fails
+        try:
+            resp = await llm_json(EXTRACT_CT_SYS, user)
+            items = resp.get("candidates") or []
+        except Exception:
+            return []
     out: List[Dict[str, Any]] = []
     for it in items:
         try:
-            field = it.get("field")
-            page = int(it.get("page", center_page))
-            raw_span = (it.get("raw_span") or "").strip()
-            value = it.get("value")
-            units = (it.get("units") or "").strip()
-            evidence = (it.get("evidence") or "").strip()
-            conf = float(it.get("confidence", 0) or 0)
-            notes = it.get("notes")
+            field = it.field
+            page = int(getattr(it, 'page', center_page) or center_page)
+            raw_span = (it.raw_span or "").strip()
+            value = it.value
+            units = (it.units or "").strip()
+            evidence = (it.evidence or "").strip()
+            conf = float(it.confidence or 0)
+            notes = it.notes
             if field and raw_span and evidence:
                 out.append({
                     "field": field,
@@ -248,7 +254,13 @@ def _group_candidates_for_prompt(cands: List[Dict[str, Any]], per_field_limit: i
         lines.append("")  # blank line
     return "\n".join(lines).strip()
 
-def _coerce_field(fname: str, entry: Dict[str, Any]) -> Dict[str, Any] | None:
+def _coerce_field(fname: str, entry: Dict[str, Any] | Any) -> Dict[str, Any] | None:
+    # Accept dicts or Pydantic models from typed parsing
+    if hasattr(entry, "model_dump"):
+        try:
+            entry = entry.model_dump()  # type: ignore[attr-defined]
+        except Exception:
+            pass
     if not isinstance(entry, dict):
         return None
     v = entry.get("value")
@@ -297,12 +309,15 @@ async def adjudicate_candidates_async(art_dir: str) -> Dict[str, str]:
     grouped = _group_candidates_for_prompt(cands)
     user = ADJ_USER_TMPL.format(grouped=grouped)
     try:
-        resp = await llm_json(ADJ_SYS, user)
+        parsed = await llm_json_typed(ADJ_SYS, user, AdjudicationResponse)
+        raw_fields = parsed.fields or {}
     except Exception:
-        # Fallback: no winners
-        return {"extracted": _write_extracted(art_dir, {})}
-
-    raw_fields = resp.get("fields") or {}
+        # Fallback to untyped if schema validation fails
+        try:
+            resp = await llm_json(ADJ_SYS, user)
+            raw_fields = resp.get("fields") or {}
+        except Exception:
+            return {"extracted": _write_extracted(art_dir, {})}
     final_fields: Dict[str, Any] = {}
     for fname, entry in raw_fields.items():
         coerced = _coerce_field(fname, entry)

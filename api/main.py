@@ -7,6 +7,8 @@ from storage.paths import ensure_dirs, new_job_id, write_json, artifacts_dir, re
 from agent.triage import pdf_pages_text, imaging_verdict, triage_pages, infer_title
 from agent.protocol_card import run_protocol_extraction_async
 from agent.gap_report import build_gap_report_llm_async
+from agent.config import get_llm_config
+import httpx
 
 app = FastAPI(title="Protocol Pilot (lite)")
 
@@ -76,6 +78,57 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
 
 @app.get("/healthz")
 def healthz(): return {"ok": True}
+
+@app.get("/healthz/llm")
+async def healthz_llm():
+    cfg = get_llm_config()
+    base = cfg.base_url.rstrip("/")
+    info = {"base_url": cfg.base_url, "model": cfg.model}
+    ok = True
+    errors = []
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{base}/api/version")
+            info["version_status"] = r.status_code
+            try:
+                info["version"] = r.json()
+            except Exception:
+                info["version_raw"] = (r.text or "")[:200]
+                raise
+    except Exception as e:
+        ok = False
+        errors.append(f"version: {str(e)}")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"{base}/api/tags")
+            info["tags_status"] = r.status_code
+            try:
+                tags = r.json()
+            except Exception:
+                info["tags_raw"] = (r.text or "")[:200]
+                raise
+            info["tags"] = tags
+            # Check if configured model is present
+            has = False
+            models = tags.get("models") if isinstance(tags, dict) else tags
+            if isinstance(models, list):
+                for m in models:
+                    name = None
+                    if isinstance(m, dict):
+                        name = m.get("name") or m.get("model")
+                    elif isinstance(m, str):
+                        name = m
+                    if name == cfg.model:
+                        has = True
+                        break
+            info["model_available"] = has
+            if not has:
+                ok = False
+                errors.append(f"model not found: {cfg.model}")
+    except Exception as e:
+        ok = False
+        errors.append(f"tags: {str(e)}")
+    return JSONResponse({"ok": ok, **info, "errors": errors})
 
 @app.post("/upload", response_model=UploadResp)
 async def upload(background_tasks: BackgroundTasks, paper: UploadFile = File(...)):

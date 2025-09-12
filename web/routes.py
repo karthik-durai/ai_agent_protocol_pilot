@@ -51,6 +51,20 @@ async def job(req: Request, job_id: str):
     return TEMPLATES.TemplateResponse("job.html", {"request": req, "job_id": job_id, "meta": meta})
 
 # Panels (HTMX fragments)
+@router.get("/job/{job_id}/panel/title", response_class=HTMLResponse)
+async def title_panel(req: Request, job_id: str):
+    """Return just the inner content for the H1 title block so HTMX can refresh it."""
+    art = artifacts_dir(job_id)
+    meta = {}
+    mp = os.path.join(art, "meta.json")
+    if os.path.exists(mp):
+        try:
+            with open(mp, "r", encoding="utf-8") as f:
+                meta = json.load(f) or {}
+        except Exception:
+            meta = {}
+    return TEMPLATES.TemplateResponse("_title.html", {"request": req, "job_id": job_id, "meta": meta})
+
 @router.get("/job/{job_id}/panel/status", response_class=HTMLResponse)
 async def status_panel(req: Request, job_id: str):
     st = read_status(job_id)

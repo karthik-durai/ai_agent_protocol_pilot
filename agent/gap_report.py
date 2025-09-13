@@ -9,7 +9,7 @@ from storage.paths import write_json
 from agent.llm_client import llm_json
 
 # ============================================================
-# Gap Report v1 — LLM-assisted (clean version)
+# Gap Report v1 — LLM-assisted
 # ------------------------------------------------------------
 # Inputs:
 #   - artifacts/<job>/imaging_extracted.json   (winners)
@@ -19,7 +19,7 @@ from agent.llm_client import llm_json
 #   - artifacts/<job>/gap_report.json
 # Behavior:
 #   - Summarize winners + grouped candidates
-#   - Ask LLM (STRICT JSON) to produce missing/ambiguous/conflicts + questions
+#   - Ask LLM (STRICT JSON) to produce missing values + questions
 #   - Validate; on failure write a minimal stub (contract-safe)
 # ============================================================
 
@@ -212,19 +212,11 @@ def _group_candidates_for_prompt(cands: List[Dict[str, Any]], per_field_limit: i
 # -----------------------------
 GAP_SYS = (
     "You are a careful gap adjudicator for MRI imaging methods. Using extracted winners "
-    "and grouped candidates with evidence, determine: "
-    "- missing fields (not extracted or very low confidence), "
-    "- ambiguous fields (multiple plausible values with similar confidence), "
-    "- conflicts (clearly disagreeing values beyond tolerance), "
-    "and draft 1–3 short author questions to resolve the most impactful gaps.\n\n"
-    "Thresholds (apply exactly):\n"
+    "and grouped candidates with evidence, identify ONLY missing fields — parameters that are not extracted "
+    "or have very low confidence — and draft 1–3 short author questions to resolve the most impactful missing values.\n\n"
+    "Rules:\n"
     "- Low confidence (missing_low_conf): confidence < 0.55.\n"
-    "- Ambiguous: top two distinct values both ≥ 0.65 confidence and Δconfidence ≤ 0.10; "
-    "  for numeric fields values must be close: TR/TE ≤ 10% relative; flip ≤ 3°; "
-    "  in‑plane each axis ≤ 0.2 mm or ≤ 10% (whichever larger); slice thickness ≤ 0.5 mm or ≤ 15%.\n"
-    "- Conflicts: values disagree beyond tolerance: TR/TE > 20% relative; flip ≥ 10°; "
-    "  field strength differs (e.g., 1.5T vs 3T); in‑plane any axis ≥ 0.5 mm or ≥ 20%; "
-    "  slice thickness ≥ 0.5 mm and ≥ 20%.\n"
+    "- Focus exclusively on missing fields; do not include 'ambiguous' or 'conflicts' keys.\n"
     "- Required MRI fields: sequence_type, TR_ms, TE_ms, flip_deg, field_strength_T, inplane_res_mm, slice_thickness_mm.\n\n"
     "Output STRICT JSON only in the requested schema. Do not invent values not supported by evidence."
 )
@@ -237,43 +229,19 @@ WINNERS (from extracted):
 CANDIDATES GROUPED BY FIELD (each item: {{value, units, page, evidence, confidence}}):
 {grouped}
 
-Return EXACTLY this JSON:
+Return EXACTLY this JSON (omit 'ambiguous' and 'conflicts' entirely):
 {{
   "schema_version": 1,
   "policy": "llm_gap_v1",
   "modality": ["MRI"],
-  "summary": {{ "missing": <int>, "ambiguous": <int>, "conflicts": <int>, "questions": <int> }},
+  "summary": {{ "missing": <int>, "questions": <int> }},
   "missing": ["TR_ms"],
   "missing_low_conf": ["inplane_res_mm"],
-  "ambiguous": [
-    {{
-      "field": "slice_thickness_mm",
-      "options": [
-        {{"value": 1.0, "page": 5, "confidence": 0.72, "evidence": "slice thickness 1.0 mm"}},
-        {{"value": 1.2, "page": 6, "confidence": 0.71, "evidence": "thickness = 1.2 mm"}}
-      ],
-      "reason": "two close values with similar confidence"
-    }}
-  ],
-  "conflicts": [
-    {{
-      "field": "TR_ms",
-      "a": {{"value": 2000, "page": 3, "confidence": 0.80}},
-      "b": {{"value": 4000, "page": 4, "confidence": 0.78}},
-      "reason": "values differ by >20% (EPI vs structural?)"
-    }}
-  ],
   "questions": [
     {{
       "field": "TR_ms",
-      "question": "Please confirm the repetition time (TR) used for the reported scans; we found differing values across sections.",
-      "rationale": "critical parameter with conflicting evidence",
-      "evidence_pages": [3,4]
-    }},
-    {{
-      "field": "inplane_res_mm",
-      "question": "Was the acquisition 1 mm isotropic or 0.8×0.8 mm in-plane?",
-      "rationale": "resolution ambiguity affecting pooling/comparison",
+      "question": "Please confirm the repetition time (TR) used for the reported scans; it is not explicitly reported.",
+      "rationale": "critical parameter missing",
       "evidence_pages": []
     }}
   ],
@@ -289,20 +257,15 @@ def _validate_llm_gap(obj: Dict[str, Any]) -> bool:
     try:
         if not isinstance(obj, dict):
             return False
-        need = {"schema_version","policy","modality","summary","missing","missing_low_conf","ambiguous","conflicts","questions","provenance"}
+        need = {"schema_version","policy","modality","summary","missing","missing_low_conf","questions","provenance"}
         if not need.issubset(set(obj.keys())):
             return False
         if not isinstance(obj["schema_version"], int): return False
         if not isinstance(obj["policy"], str): return False
         if not isinstance(obj["modality"], list): return False
         if not isinstance(obj["summary"], dict): return False
-        for k in ("missing","missing_low_conf","ambiguous","conflicts","questions"):
+        for k in ("missing","missing_low_conf","questions"):
             if not isinstance(obj[k], list): return False
-        for a in obj["ambiguous"]:
-            if not isinstance(a, dict) or "field" not in a or "options" not in a: return False
-            if not isinstance(a["options"], list) or not a["options"]: return False
-        for c in obj["conflicts"]:
-            if not isinstance(c, dict) or "field" not in c or "a" not in c or "b" not in c: return False
         for q in obj["questions"]:
             if not isinstance(q, dict) or "field" not in q or "question" not in q: return False
         return True
@@ -315,11 +278,9 @@ def _write_stub_gap_report(art_dir: str, modalities: List[str], extracted_exists
         "schema_version": 1,
         "policy": "llm_gap_v1_stub",
         "modality": modalities or ["MRI"],
-        "summary": {"missing": 0, "ambiguous": 0, "conflicts": 0, "questions": 0},
+        "summary": {"missing": 0, "questions": 0},
         "missing": [],
         "missing_low_conf": [],
-        "ambiguous": [],
-        "conflicts": [],
         "questions": [],
         "provenance": {
             "from_extracted": extracted_exists,
@@ -370,11 +331,9 @@ async def build_gap_report_llm_async(art_dir: str) -> str:
         if not _validate_llm_gap(resp):
             return _write_stub_gap_report(art_dir, modalities, extracted_exists, candidates_exists)
 
-        # Normalize summary counts to match arrays
+        # Normalize summary counts to match arrays (missing-only focus)
         sm = resp.get("summary") or {}
         sm["missing"] = len(resp.get("missing", []))
-        sm["ambiguous"] = len(resp.get("ambiguous", []))
-        sm["conflicts"] = len(resp.get("conflicts", []))
         sm["questions"] = len(resp.get("questions", []))
         resp["summary"] = sm
 

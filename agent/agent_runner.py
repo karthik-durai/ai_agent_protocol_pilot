@@ -41,11 +41,11 @@ MANDATORY PRE-FLIGHT (in order):
 Then begin extraction with `extract_and_build_gaps(job_dir)`.
 
 EXTRACTION LOOP RULES (MANDATORY):
-• After `extract_and_build_gaps`, if (missing + conflicts) > 0 AND steps remain,
+• After `extract_and_build_gaps`, if `missing` > 0 AND steps remain,
   you MUST immediately call `extract_with_window(job_dir, span)` (span in 0..4; prefer 2).
 • If your last `extract_with_window` returned `improved=false` AND steps remain,
   you MUST try again with a larger span: span' = min(4, previous_span + 1).
-• Stop ONLY when (missing + conflicts) == 0 OR you have zero steps remaining OR the verdict was NON-IMAGING.
+• Stop ONLY when `missing` == 0 OR you have zero steps remaining OR the verdict was NON-IMAGING.
 
 OUTPUT RULES:
 • When a tool call is required by the rules, RESPOND WITH A TOOL CALL ONLY — do NOT write any narrative text.
@@ -61,8 +61,7 @@ Instructions:
 1) Pre-flight tools in order: infer_title(job_dir), imaging_verdict(job_dir), triage_pages(job_dir).
    - If imaging_verdict indicates NON-IMAGING, STOP.
 2) Then call `extract_and_build_gaps(job_dir)`.
-3) If the tool output includes numeric `missing` and `conflicts` whose sum is > 0,
-   call `extract_with_window(job_dir, span)` next (explicitly choose span in 0..4; prefer 2).
+3) If the tool output includes numeric `missing` > 0, call `extract_with_window(job_dir, span)` next (explicitly choose span in 0..4; prefer 2).
 4) If the previous `extract_with_window` reported `improved=false` and you still have steps remaining,
    call `extract_with_window` again with a larger span (span' = min(4, previous_span + 1)).
 5) Always include `job_dir` in tool arguments. Do not narrate when a tool call is required.
@@ -165,10 +164,9 @@ async def agent_run(job_dir: str) -> Dict[str, Any]:
             agent_output = None
 
         missing = gaps_after.get("missing", 0)
-        conflicts = gaps_after.get("conflicts", 0)
         if non_imaging:
             reason = "non_imaging"
-        elif (missing + conflicts) == 0:
+        elif missing == 0:
             reason = "gaps_resolved"
         elif steps_used >= max_steps:
             reason = "budget_exhausted"

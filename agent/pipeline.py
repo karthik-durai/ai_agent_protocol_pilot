@@ -132,7 +132,7 @@ async def extract_with_window(job_dir: str, span: int) -> Dict[str, Any]:
 
     after_gap = read_json(jdir / "gap_report.json", {})
     after = summarize_gaps(after_gap)
-    improved = (after.get("missing", 0) + after.get("conflicts", 0)) < (before.get("missing", 0) + before.get("conflicts", 0))
+    improved = int(after.get("missing", 0)) < int(before.get("missing", 0))
 
     write_status(
         job_id,

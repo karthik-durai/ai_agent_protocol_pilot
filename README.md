@@ -39,7 +39,7 @@ This app auto‑loads `.env` via `python-dotenv`.
    - triage_pages → writes `sections.json`
 3. Extraction + gaps:
    - extract_and_build_gaps → writes `imaging_candidates.jsonl`, `imaging_extracted.json`, `gap_report.json`
-   - If gaps remain (missing + conflicts > 0), agent re-extracts with widened window (`extract_with_window`, span 2→4) within a small step budget.
+   - If gaps remain (missing > 0), agent re-extracts with widened window (`extract_with_window`, span 2→4) within a small step budget.
 4. UI polls panels to display Status, Imaging Verdict, Candidate Pages, Protocol Card, and Gap Report.
 
 ## Architecture

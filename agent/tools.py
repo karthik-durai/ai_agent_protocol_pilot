@@ -180,9 +180,7 @@ async def _extract_tool_async(job_dir: str) -> Dict[str, Any]:
         "step": "extract",
         "gaps": gaps,
         "missing": int(gaps.get("missing", 0)),
-        "conflicts": int(gaps.get("conflicts", 0)),
-        "ambiguous": int(gaps.get("ambiguous", 0)),
-        "summary": f"GAPS missing={gaps.get('missing',0)} conflicts={gaps.get('conflicts',0)} ambiguous={gaps.get('ambiguous',0)}",
+        "summary": f"GAPS missing={gaps.get('missing',0)}",
     }
 
 
@@ -223,12 +221,8 @@ async def _extract_with_window_tool_async(job_dir: str, span: int = 2) -> Dict[s
     after = out.get("after") or summarize_gaps(read_json(jdir / "gap_report.json", {}))
 
     before_missing = int((before or {}).get("missing", 0))
-    before_conflicts = int((before or {}).get("conflicts", 0))
-    before_ambiguous = int((before or {}).get("ambiguous", 0))
 
     after_missing = int(after.get("missing", 0))
-    after_conflicts = int(after.get("conflicts", 0))
-    after_ambiguous = int(after.get("ambiguous", 0))
 
     improved = bool(out.get("improved"))
     pages = None
@@ -238,8 +232,7 @@ async def _extract_with_window_tool_async(job_dir: str, span: int = 2) -> Dict[s
         pages = None
 
     summary = (
-        f"SPAN {span}; BEFORE m={before_missing} c={before_conflicts} a={before_ambiguous} "
-        f"→ AFTER m={after_missing} c={after_conflicts} a={after_ambiguous}; improved={improved}"
+        f"SPAN {span}; BEFORE m={before_missing} → AFTER m={after_missing}; improved={improved}"
     )
 
     # Ensure status reflects outcome
@@ -266,11 +259,9 @@ async def _extract_with_window_tool_async(job_dir: str, span: int = 2) -> Dict[s
         "before": before,
         "after": after,
         "before_missing": before_missing,
-        "before_conflicts": before_conflicts,
-        "before_ambiguous": before_ambiguous,
+        
         "after_missing": after_missing,
-        "after_conflicts": after_conflicts,
-        "after_ambiguous": after_ambiguous,
+        
         "improved": improved,
         "summary": summary,
     }

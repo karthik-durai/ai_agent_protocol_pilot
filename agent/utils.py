@@ -20,13 +20,16 @@ def read_json(path: str | Path, default: Any) -> Any:
 
 
 def summarize_gaps(gap: Dict[str, Any] | None) -> Dict[str, int]:
-    """Return counts for missing/ambiguous/conflicts from a gap-report dict."""
+    """Return counts focused on missing values from a gap-report dict.
+
+    Ambiguities and conflicts are ignored in the summary to keep the agent and UI
+    focused on filling missing values. Callers expecting those keys should treat
+    absent keys as zero.
+    """
     if not isinstance(gap, dict):
-        return {"missing": 0, "ambiguous": 0, "conflicts": 0}
+        return {"missing": 0}
     return {
         "missing": len(gap.get("missing", []) or []),
-        "ambiguous": len(gap.get("ambiguous", []) or []),
-        "conflicts": len(gap.get("conflicts", []) or []),
     }
 
 
@@ -41,4 +44,3 @@ __all__ = [
     "summarize_gaps",
     "summarize_gaps_from_dir",
 ]
-

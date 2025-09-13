@@ -186,7 +186,7 @@ async def quarantine(req: Request):
                     title = (json.load(f) or {}).get("title")
             q.append({"job_id": jid, "state": j["state"], "title": title, "reason": pass_reason})
             continue
-        # non-imaging verdict
+        # non-MRI verdict
         flags = os.path.join(art, "doc_flags.json")
         if os.path.exists(flags):
             try:
@@ -198,7 +198,7 @@ async def quarantine(req: Request):
                     if os.path.exists(meta_path):
                         with open(meta_path, "r", encoding="utf-8") as mf:
                             title = (json.load(mf) or {}).get("title")
-                    q.append({"job_id": jid, "state": j["state"], "title": title, "reason": "non-imaging"})
+                    q.append({"job_id": jid, "state": j["state"], "title": title, "reason": "non‑MRI"})
             except Exception:
                 pass
     return TEMPLATES.TemplateResponse("quarantine.html", {"request": req, "jobs": q})

@@ -4,9 +4,17 @@
     <p class="text-sm text-slate-500">Waiting for doc_flags.json…</p>
     {% else %}
     <div class="text-sm">
-        <div>Imaging: <strong>{{ 'Yes' if data.is_imaging else 'No' }}</strong>
-            {% if data.modalities %} · Modalities: {{ data.modalities|join(', ') }}{% endif %}
-            · Confidence: {{ '%.2f'|format(data.confidence or 0) }}
+        <div>
+            Verdict:
+            {% if data.is_imaging %}
+            <span
+                class="inline-flex items-center rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-200">MRI
+                paper</span>
+            {% else %}
+            <span
+                class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-200">Non‑MRI
+                paper</span>
+            {% endif %}
         </div>
         {% if data.reasons %}
         <ul class="list-disc ml-5 mt-2">

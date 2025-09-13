@@ -10,7 +10,6 @@ from langchain.tools import StructuredTool
 from storage.paths import write_status, write_json
 from agent.pipeline import (
     extract_and_build_gaps as _extract_async,
-    extract_with_window as _extract_with_window_async,
 )
 from agent.utils import read_json, summarize_gaps
 from agent.triage import (
@@ -22,13 +21,6 @@ from agent.triage import (
 # -----------------
 # Small helpers (centralized in agent.utils)
 # -----------------
-
-
-def _max_span() -> int:
-    try:
-        return max(0, min(10, int(os.getenv("MAX_SPAN", "4"))))
-    except Exception:
-        return 4
 
 
 # -----------------
@@ -193,103 +185,17 @@ extract_and_build_gaps_tool = StructuredTool.from_function(
 )
 
 
-# -----------------
-# Tool 2: extract_with_window
-# -----------------
-class ExtractWithWindowSchema(BaseModel):
-    job_dir: str = Field(..., description="Absolute path to the job's artifacts directory.")
-    span: conint(ge=0, le=4) = Field(2, description="Half-span around triaged pages (0..4).")
-
-
-async def _extract_with_window_tool_async(job_dir: str, span: int = 2) -> Dict[str, Any]:
-    jdir = Path(job_dir)
-    job_id = jdir.name
-    span = max(0, min(_max_span(), int(span)))
-
-    write_status(
-        job_id,
-        state="running",
-        step="reextract_wide.start",
-        last_action="extract_with_window",
-        span=span,
-    )
-
-    out = await _extract_with_window_async(job_dir, span=span)
-
-    # Extract explicit numeric cues for the agent
-    before = out.get("before") or {}
-    after = out.get("after") or summarize_gaps(read_json(jdir / "gap_report.json", {}))
-
-    before_missing = int((before or {}).get("missing", 0))
-
-    after_missing = int(after.get("missing", 0))
-
-    improved = bool(out.get("improved"))
-    pages = None
-    try:
-        pages = (out.get("args", {}) or {}).get("pages")
-    except Exception:
-        pages = None
-
-    summary = (
-        f"SPAN {span}; BEFORE m={before_missing} → AFTER m={after_missing}; improved={improved}"
-    )
-
-    # Ensure status reflects outcome
-    write_status(
-        job_id,
-        state="running",
-        step="reextract_wide.done",
-        last_action="extract_with_window",
-        gaps_after=after,
-        span=span,
-        improved=improved,
-        before=before,
-        pages=pages,
-        summary=summary,
-    )
-
-    # Return enriched payload for the LLM's decision
-    enriched = {
-        "ok": True,
-        "step": "extract_with_window",
-        "span": span,
-        "args": out.get("args", {"span": span, "pages": pages}),
-        "pages": pages,
-        "before": before,
-        "after": after,
-        "before_missing": before_missing,
-        
-        "after_missing": after_missing,
-        
-        "improved": improved,
-        "summary": summary,
-    }
-    return enriched
-
-
-extract_with_window_tool = StructuredTool.from_function(
-    name="extract_with_window",
-    description="Expand candidate pages by ±span and re-run extraction, then rebuild the gap report.",
-    func=lambda job_dir, span=2: {"error": "use async"},  # agent will use coroutine
-    coroutine=_extract_with_window_tool_async,
-    args_schema=ExtractWithWindowSchema,
-)
-
-
 # Export tools list for the agent (pre-extraction and extraction tools)
 TOOLS = [
     infer_title_tool,
     imaging_verdict_tool,
     triage_pages_tool,
     extract_and_build_gaps_tool,
-    extract_with_window_tool,
 ]
 __all__ = [
     "infer_title_tool",
     "imaging_verdict_tool",
     "triage_pages_tool",
     "extract_and_build_gaps_tool",
-    "extract_with_window_tool",
     "TOOLS",
 ]

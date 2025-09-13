@@ -13,10 +13,21 @@ EXTRACTED_FILENAME = "imaging_extracted.json"
 # --- M3a Step 2: strict-JSON extraction prompts (MRI) ---
 EXTRACT_MRI_SYS = (
     "You are a precise information extraction model for MRI imaging methods. "
-    "Extract only when the text gives explicit evidence. Anchor every value "
-    "to an exact substring. Normalize MRI units to TR/TE in ms, flip in degrees, "
+    "Extract ONLY when the text asserts the actual acquisition used in THIS paper. "
+    "Anchor every value to an exact substring. Normalize MRI units to TR/TE in ms, flip in degrees, "
     "field strength in Tesla, in‑plane resolution in mm, and slice thickness in mm. "
-    "Output STRICT JSON only as specified. Do not include commentary."
+    "Output STRICT JSON only as specified. Do not include commentary.\n\n"
+    "Acceptance cues (extract ONLY when present):\n"
+    "- Explicit assertions: 'was', 'were', 'used', 'set to', 'acquired with', 'parameters were', 'TR =', "
+    "table cells with concrete values for this study.\n"
+    "- Clear table entries of study parameters (not recommendations/examples).\n\n"
+    "Rejection cues (NEVER extract from these; omit instead):\n"
+    "- Example/generic language: 'e.g.', 'for example', 'such as', 'for instance', 'typically', 'commonly', 'usually', "
+    "'may', 'might', 'can', 'recommended', 'default', 'illustrative'.\n"
+    "- Guidance or background text not describing this study's acquisition.\n"
+    "- In‑plane resolution: NEVER derive from FOV; strings like 'FOV', 'FOV (mm2)', 'mm^2', or dimensions that clearly denote field of view MUST NOT be mapped to in‑plane resolution. "
+    "Extract resolution only from phrases like 'resolution', 'in‑plane', 'voxel', or 'isotropic'.\n\n"
+    "If uncertain or only examples are present, DO NOT emit a candidate (do not guess)."
 )
 
 EXTRACT_MRI_USER_TMPL = """TEXT WINDOW (may include tables/symbols/units):
@@ -26,14 +37,16 @@ EXTRACT_MRI_USER_TMPL = """TEXT WINDOW (may include tables/symbols/units):
 
 Center page index (zero-based): {center_page}
 
-FIELDS TO EXTRACT (emit ONLY when supported by explicit text):
-- sequence_type (string) — e.g., T1w, T2w, FLAIR, DWI, EPI, GRE, SE, MPRAGE
-- TR_ms (number, ms) — e.g., \"TR = 2000 ms\", or \"TR = 2 s\" → 2000
-- TE_ms (number, ms) — e.g., \"TE = 30 ms\"
-- flip_deg (number, degrees) — e.g., \"flip angle 9°\", \"FA=9\"
-- field_strength_T (number, Tesla) — e.g., \"3T\", \"3.0 Tesla\"
-- inplane_res_mm ([x,y] numbers, mm) — e.g., \"0.8 × 0.8 mm\", \"1 mm isotropic\" → [1,1]
-- slice_thickness_mm (number, mm) — e.g., \"slice thickness 1.0 mm\"
+IMPORTANT: Use only the TEXT WINDOW above as evidence. Ignore any values in these instructions; do NOT copy example numbers. Extract only if supported by the TEXT WINDOW.
+
+FIELDS TO EXTRACT (emit ONLY when supported by explicit text in the TEXT WINDOW):
+- sequence_type (string) — explicit sequence name used (e.g., T1w, T2w, FLAIR, DWI, EPI, GRE, SE, MPRAGE)
+- TR_ms (number, ms) — explicit TR reported in the text
+- TE_ms (number, ms) — explicit TE reported in the text
+- flip_deg (number, degrees) — explicit flip angle reported in the text
+- field_strength_T (number, Tesla) — explicit field strength reported in the text
+- inplane_res_mm ([x,y] numbers, mm) — explicit in‑plane resolution wording (e.g., "resolution", "in‑plane", "voxel", "isotropic"); if isotropic, output [v,v]; NEVER derive from FOV
+- slice_thickness_mm (number, mm) — explicit slice thickness reported in the text
 
 Return EXACTLY this JSON:
 {{
@@ -52,11 +65,14 @@ Return EXACTLY this JSON:
 }}
 
 Rules:
-- Emit entries only with direct textual support; DO NOT guess.
-- Normalize TR seconds→ms; accept \"TR/TE=2000/30 ms\" shorthand and split accordingly.
-- Accept decimal comma (e.g., 2,0 s) and normalize.
-- For in‑plane resolution: parse \"1 mm isotropic\" → [1,1]; \"0.8 × 0.8 mm\" → [0.8,0.8].
-- If uncertain, set confidence ≤ 0.6.
+- Use ONLY the TEXT WINDOW as evidence; DO NOT copy any numbers from these instructions.
+- Emit entries only with direct textual support that the parameter was used in THIS study; DO NOT guess.
+- Acceptance cues: explicit assertions (e.g., "was used", "were", "set to", "acquired with", table cells of study parameters).
+- Rejection cues: example/generic language (e.g., "e.g.", "for example", "such as", "typically", "recommended", "default"). Omit in such cases.
+- Normalize TR seconds→ms; accept TR/TE shorthand like "TR/TE = a/b ms" and split accordingly.
+- Accept decimal comma and normalize.
+- In‑plane resolution: require wording like "resolution", "in‑plane", "voxel", or "isotropic". If isotropic with value v mm → output [v, v]; if text states x × y mm → output [x, y]. NEVER derive from FOV.
+- If uncertain, or only examples are present, OMIT the entry entirely (do not output a candidate).
 - STRICT JSON only."""
 
 

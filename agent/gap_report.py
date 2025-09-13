@@ -211,14 +211,25 @@ def _group_candidates_for_prompt(cands: List[Dict[str, Any]], per_field_limit: i
 # LLM prompts (STRICT JSON)
 # -----------------------------
 GAP_SYS = (
-    "You are a careful gap adjudicator for MRI imaging methods. Using extracted winners "
-    "and grouped candidates with evidence, identify ONLY missing fields — parameters that are not extracted "
-    "or have very low confidence — and draft 1–3 short author questions to resolve the most impactful missing values.\n\n"
-    "Rules:\n"
-    "- Low confidence (missing_low_conf): confidence < 0.55.\n"
-    "- Focus exclusively on missing fields; do not include 'ambiguous' or 'conflicts' keys.\n"
+    "You are a careful gap adjudicator for MRI imaging methods. Using extracted WINNERS and grouped candidates with evidence, "
+    "produce a gaps report focused ONLY on missing values and author questions.\n\n"
+    "Authoritative rules (apply EXACTLY):\n"
+    "- Winners are authoritative. For each required field, look first at WINNERS.\n"
+    "- Confidence threshold: conf_min = 0.55.\n"
+    "- Classification per field:\n"
+    "  • Present with confidence ≥ 0.55 in WINNERS → DO NOT include in 'missing' or 'missing_low_conf'.\n"
+    "  • Present with 0.0 ≤ confidence < 0.55 in WINNERS → include in 'missing_low_conf'.\n"
+    "  • Not present in WINNERS → include in 'missing'.\n"
+    "- Ignore contradictions from candidates if WINNERS has that field with confidence ≥ 0.55 (do not mark missing).\n"
     "- Required MRI fields: sequence_type, TR_ms, TE_ms, flip_deg, field_strength_T, inplane_res_mm, slice_thickness_mm.\n\n"
-    "Output STRICT JSON only in the requested schema. Do not invent values not supported by evidence."
+    "Output policy:\n"
+    "- Focus exclusively on missing fields; DO NOT include keys 'ambiguous' or 'conflicts'.\n"
+    "- Output STRICT JSON only, no extra text.\n"
+    "- Summary counts must match arrays exactly: summary.missing == len(missing); summary.questions == len(questions).\n\n"
+    "Self-check before output (MANDATORY):\n"
+    "- For every entry in 'missing': confirm that field is ABSENT from WINNERS (no entry).\n"
+    "- For every entry in 'missing_low_conf': confirm that field IS present in WINNERS with confidence < 0.55.\n"
+    "- Remove any field that violates the rules above, then recompute 'summary'."
 )
 
 GAP_USER_TMPL = """MODALITY: {modality}
@@ -229,24 +240,12 @@ WINNERS (from extracted):
 CANDIDATES GROUPED BY FIELD (each item: {{value, units, page, evidence, confidence}}):
 {grouped}
 
-Return EXACTLY this JSON (omit 'ambiguous' and 'conflicts' entirely):
-{{
-  "schema_version": 1,
-  "policy": "llm_gap_v1",
-  "modality": ["MRI"],
-  "summary": {{ "missing": <int>, "questions": <int> }},
-  "missing": ["TR_ms"],
-  "missing_low_conf": ["inplane_res_mm"],
-  "questions": [
-    {{
-      "field": "TR_ms",
-      "question": "Please confirm the repetition time (TR) used for the reported scans; it is not explicitly reported.",
-      "rationale": "critical parameter missing",
-      "evidence_pages": []
-    }}
-  ],
-  "provenance": {{ "from_extracted": true, "from_candidates": true }}
-}}
+REQUIRED FIELDS: sequence_type, TR_ms, TE_ms, flip_deg, field_strength_T, inplane_res_mm, slice_thickness_mm
+
+RULES REMINDER:
+- Winners are authoritative; if WINNERS has a field with confidence ≥ 0.55, DO NOT include it in ‘missing’ nor ‘missing_low_conf’.
+- If WINNERS has a field with confidence < 0.55, include it in ‘missing_low_conf’.
+- Only include in ‘missing’ when the field is absent in WINNERS.
 """
 
 # -----------------------------

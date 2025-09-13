@@ -39,7 +39,6 @@ This app auto‑loads `.env` via `python-dotenv`.
    - triage_pages → writes `sections.json`
 3. Extraction + gaps:
    - extract_and_build_gaps → writes `imaging_candidates.jsonl`, `imaging_extracted.json`, `gap_report.json`
-   - If gaps remain (missing > 0), agent re-extracts with widened window (`extract_with_window`, span 2→4) within a small step budget.
 4. UI polls panels to display Status, Imaging Verdict, Candidate Pages, Protocol Card, and Gap Report.
 
 ## Architecture
@@ -59,9 +58,6 @@ flowchart TD
       V -- MRI --> T2[triage_pages → sections.json]
       T2 --> E1[extract_and_build_gaps]
       E1 --> G[gap_report.json]
-      E1 -->|gaps remain| E2[extract_with_window(span 2→4)]
-      E2 --> G
-      E2 -->|repeat until improved or budget used| E2
     end
 
     G --> UI[Web UI panels]

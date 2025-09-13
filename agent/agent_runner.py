@@ -38,42 +38,27 @@ MANDATORY PRE-FLIGHT (in order):
 1) infer_title(job_dir)
 2) imaging_verdict(job_dir) — if NON-IMAGING, STOP immediately (no further tools).
 3) triage_pages(job_dir)
-Then begin extraction with `extract_and_build_gaps(job_dir)`.
-
-EXTRACTION LOOP RULES (MANDATORY):
-• After `extract_and_build_gaps`, if `missing` > 0 AND steps remain,
-  you MUST immediately call `extract_with_window(job_dir, span)` (span in 0..4; prefer 2).
-• If your last `extract_with_window` returned `improved=false` AND steps remain,
-  you MUST try again with a larger span: span' = min(4, previous_span + 1).
-• Stop ONLY when `missing` == 0 OR you have zero steps remaining OR the verdict was NON-IMAGING.
+Then run a single baseline extraction with `extract_and_build_gaps(job_dir)` and STOP.
 
 OUTPUT RULES:
 • When a tool call is required by the rules, RESPOND WITH A TOOL CALL ONLY — do NOT write any narrative text.
-• Do NOT claim you are out of steps; the runtime manages step budget.
-Prefer the smallest action with the highest expected gain.
+• Prefer the smallest action with the highest expected gain.
 """
 
 HUMAN = """
 Job dir: {job_dir}
-Steps remaining: {steps_remaining}
 
 Instructions:
 1) Pre-flight tools in order: infer_title(job_dir), imaging_verdict(job_dir), triage_pages(job_dir).
    - If imaging_verdict indicates NON-IMAGING, STOP.
-2) Then call `extract_and_build_gaps(job_dir)`.
-3) If the tool output includes numeric `missing` > 0, call `extract_with_window(job_dir, span)` next (explicitly choose span in 0..4; prefer 2).
-4) If the previous `extract_with_window` reported `improved=false` and you still have steps remaining,
-   call `extract_with_window` again with a larger span (span' = min(4, previous_span + 1)).
-5) Always include `job_dir` in tool arguments. Do not narrate when a tool call is required.
-6) Stop only when the decision rules say to stop.
+2) Then call `extract_and_build_gaps(job_dir)` and STOP.
+3) Always include `job_dir` in tool arguments. Do not narrate when a tool call is required.
 
 Examples:
-- First: infer_title(job_dir="{job_dir}")
-- Second: imaging_verdict(job_dir="{job_dir}")
-- Third: triage_pages(job_dir="{job_dir}", top_k=6)
-- Fourth: extract_and_build_gaps(job_dir="{job_dir}")
-- Next: extract_with_window(job_dir="{job_dir}", span=2)
-- Next (if no improvement): extract_with_window(job_dir="{job_dir}", span=3)
+- infer_title(job_dir="{job_dir}")
+- imaging_verdict(job_dir="{job_dir}")
+- triage_pages(job_dir="{job_dir}", top_k=6)
+- extract_and_build_gaps(job_dir="{job_dir}")
 """
 
 
@@ -130,7 +115,6 @@ async def agent_run(job_dir: str) -> Dict[str, Any]:
         ex = build_agent()
         result = await ex.ainvoke({
             "job_dir": job_dir,
-            "steps_remaining": _max_steps(),
             "input": ""
         })
         # Derive why the agent stopped

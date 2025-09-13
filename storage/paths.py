@@ -24,7 +24,7 @@ def status_path(job_id: str) -> str:
     return os.path.join(artifacts_dir(job_id), "status.json")
 
 def write_status(job_id: str, state: str, **extra):
-    rec = {"state": state, **extra}
+    rec = {"state": state, "step": extra.get("step")}
     write_json(status_path(job_id), rec)
     return rec
 

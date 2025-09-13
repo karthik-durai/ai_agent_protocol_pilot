@@ -1,7 +1,8 @@
 {% set state = status.get('state','unknown') %}
 {% if state in ['queued','processing','running'] %}
 <div class="mb-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-    {{ 'Queued…' if state == 'queued' else 'Processing…' if state == 'processing' else 'Running…' }} This page auto-refreshes.
+    {{ 'Queued…' if state == 'queued' else 'Processing…' if state == 'processing' else 'Running…' }} This page
+    auto-refreshes.
 </div>
 {% elif state == 'error' %}
 <div class="mb-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">
@@ -16,7 +17,6 @@
     {% set stop_reason = status.get('stop_reason') %}
     {% set steps_used = status.get('steps_used') %}
     {% set max_steps = status.get('max_steps') %}
-    {% set last_action = status.get('last_action') %}
     {% set gaps = status.get('gaps_after') or status.get('gaps') or {} %}
     {% set agent_output = status.get('agent_output') %}
     {% set stop_map = {
@@ -36,20 +36,12 @@
             <span class="font-semibold">Current step:</span>
             <span class="ml-1 text-slate-700">{{ step or '—' }}</span>
         </div>
-        <div>
-            <span class="font-semibold">Last action:</span>
-            <span class="ml-1 text-slate-700">{{ last_action or '—' }}</span>
-        </div>
-        <div>
-            <span class="font-semibold">Steps used / budget:</span>
-            <span class="ml-1 text-slate-700">{{ (steps_used|string) if steps_used is not none else '—' }} / {{
-                (max_steps|string) if max_steps is not none else '—' }}</span>
-        </div>
     </div>
     {% if gaps %}
     <div class="mt-3 text-sm">
         <span class="font-semibold">Gaps after:</span>
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 ml-2">missing: {{ gaps.get('missing', 0) }}</span>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 ml-2">missing: {{
+            gaps.get('missing', 0) }}</span>
     </div>
     {% endif %}
     {% if stop_reason %}

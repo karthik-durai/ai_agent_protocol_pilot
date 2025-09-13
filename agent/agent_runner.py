@@ -4,25 +4,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-import json
-
-def _read_json(p: Path, default: Any) -> Any:
-    try:
-        if p.exists():
-            return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return default
-
-def _summarize_gaps(job_dir: str) -> Dict[str, int]:
-    gap = _read_json(Path(job_dir) / "gap_report.json", {})
-    if not isinstance(gap, dict):
-        return {"missing": 0, "ambiguous": 0, "conflicts": 0}
-    return {
-        "missing": len(gap.get("missing", []) or []),
-        "ambiguous": len(gap.get("ambiguous", []) or []),
-        "conflicts": len(gap.get("conflicts", []) or []),
-    }
+from agent.utils import summarize_gaps_from_dir
 
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -34,13 +16,10 @@ from agent.tools import TOOLS
 
 
 def _chat() -> ChatOllama:
+    """Construct the chat client using centralized config, with optional env override for temperature."""
     cfg = get_llm_config()
-    temp = float(os.getenv("AGENT_TEMPERATURE", "0.0"))
-    return ChatOllama(
-        base_url=(cfg.base_url if hasattr(cfg, "base_url") else cfg.chat_base),
-        model=cfg.model,
-        temperature=temp,
-    )
+    temp = float(os.getenv("AGENT_TEMPERATURE", str(cfg.temperature)))
+    return ChatOllama(base_url=cfg.base_url, model=cfg.model, temperature=temp)
 
 
 def _max_steps() -> int:
@@ -87,6 +66,7 @@ Examples:
 
 
 def build_agent() -> AgentExecutor:
+    """Build the tool-calling agent with our prompt and tools."""
     llm = _chat()
     prompt = ChatPromptTemplate.from_messages([
         ("system", SYSTEM),
@@ -105,7 +85,17 @@ def build_agent() -> AgentExecutor:
     return executor
 
 
-def _finalize(job_dir: str, *, stop_reason: str, steps_used: int, max_steps: int, last_action: str | None, gaps_after: Dict[str, int], agent_output: str | None = None) -> None:
+def _finalize(
+    job_dir: str,
+    *,
+    stop_reason: str,
+    steps_used: int,
+    max_steps: int,
+    last_action: str | None,
+    gaps_after: Dict[str, int],
+    agent_output: str | None = None,
+) -> None:
+    """Record the final status for this job in storage."""
     job_id = Path(job_dir).name
     write_status(
         job_id,
@@ -121,6 +111,7 @@ def _finalize(job_dir: str, *, stop_reason: str, steps_used: int, max_steps: int
 
 
 async def agent_run(job_dir: str) -> Dict[str, Any]:
+    """Run the agent loop for a given job directory and persist progress."""
     job_id = Path(job_dir).name
     write_status(job_id, state="running", step="agent.start")
     try:
@@ -131,7 +122,7 @@ async def agent_run(job_dir: str) -> Dict[str, Any]:
             "input": ""
         })
         # Derive why the agent stopped
-        gaps_after = _summarize_gaps(job_dir)
+        gaps_after = summarize_gaps_from_dir(job_dir)
         max_steps = _max_steps()
         steps_used = 0
         last_action = None

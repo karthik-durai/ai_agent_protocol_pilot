@@ -15,7 +15,7 @@ async def home(req: Request):
 @router.get("/queue", response_class=HTMLResponse)
 async def queue(req: Request):
     jobs = list_jobs(200)
-    inflight = [j for j in jobs if j.get("state") in ("queued", "processing", "unknown")]
+    inflight = [j for j in jobs if j.get("state") in ("queued", "processing", "running", "unknown")]
     # attach title if available
     for j in inflight:
         meta_path = os.path.join(artifacts_dir(j["job_id"]), "meta.json")

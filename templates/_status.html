@@ -11,12 +11,66 @@
 
 <div class="bg-white rounded-xl shadow p-5">
     <h2 class="text-lg font-semibold mb-3">Status</h2>
+    {# Convenience variables for status fields #}
+    {% set step = status.get('step') %}
+    {% set stop_reason = status.get('stop_reason') %}
+    {% set steps_used = status.get('steps_used') %}
+    {% set max_steps = status.get('max_steps') %}
+    {% set last_action = status.get('last_action') %}
+    {% set gaps = status.get('gaps_after') or status.get('gaps') or {} %}
+    {% set agent_output = status.get('agent_output') %}
+    {% set stop_map = {
+    'gaps_resolved': 'All critical gaps resolved',
+    'budget_exhausted': 'Step budget exhausted',
+    'model_chose_stop': 'Model chose to stop',
+    'exception': 'Exception during run'
+    } %}
     <p class="mb-2">State:
         <span class="px-2 py-1 rounded text-xs {{ 'bg-green-100' if state=='done' else 'bg-yellow-100' }}">
             {{ state }}
         </span>
     </p>
-    <div class="text-sm">
+    <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+        <div>
+            <span class="font-semibold">Current step:</span>
+            <span class="ml-1 text-slate-700">{{ step or '—' }}</span>
+        </div>
+        <div>
+            <span class="font-semibold">Last action:</span>
+            <span class="ml-1 text-slate-700">{{ last_action or '—' }}</span>
+        </div>
+        <div>
+            <span class="font-semibold">Steps used / budget:</span>
+            <span class="ml-1 text-slate-700">{{ (steps_used|string) if steps_used is not none else '—' }} / {{
+                (max_steps|string) if max_steps is not none else '—' }}</span>
+        </div>
+    </div>
+    {% if gaps %}
+    <div class="mt-3 text-sm">
+        <span class="font-semibold">Gaps after:</span>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 ml-2">missing: {{
+            gaps.get('missing', 0) }}</span>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 ml-2">conflicts: {{
+            gaps.get('conflicts', 0) }}</span>
+        <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 ml-2">ambiguous: {{
+            gaps.get('ambiguous', 0) }}</span>
+    </div>
+    {% endif %}
+    {% if stop_reason %}
+    <div class="mt-3 text-sm">
+        <span class="font-semibold">Why stopped:</span>
+        <span class="ml-1 {{ 'text-green-700' if stop_reason=='gaps_resolved' else 'text-slate-700' }}">{{
+            stop_map.get(stop_reason, stop_reason) }}</span>
+    </div>
+    {% endif %}
+    {% if agent_output %}
+    <details class="mt-3">
+        <summary class="cursor-pointer text-sm text-indigo-700">Show agent output</summary>
+        <pre
+            class="mt-2 text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-auto whitespace-pre-wrap">{{ agent_output }}</pre>
+    </details>
+    {% endif %}
+    <div class="mt-4 pt-4 border-t border-slate-200 text-sm">
         <span class="font-semibold">Artifacts:</span>
         {% if files %}
         <ul class="list-disc ml-5 mt-1">

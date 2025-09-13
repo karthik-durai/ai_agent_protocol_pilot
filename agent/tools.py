@@ -1,6 +1,5 @@
 # agent/tools.py
 from __future__ import annotations
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict
@@ -13,28 +12,11 @@ from agent.pipeline import (
     extract_and_build_gaps as _extract_async,
     extract_with_window as _extract_with_window_async,
 )
+from agent.utils import read_json, summarize_gaps
 
 # -----------------
-# Small helpers
+# Small helpers (centralized in agent.utils)
 # -----------------
-
-def _read_json(p: Path, default: Any) -> Any:
-    try:
-        if p.exists():
-            return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return default
-
-
-def _summarize_gaps(gap: Dict[str, Any]) -> Dict[str, int]:
-    if not isinstance(gap, dict):
-        return {"missing": 0, "ambiguous": 0, "conflicts": 0}
-    return {
-        "missing": len(gap.get("missing", []) or []),
-        "ambiguous": len(gap.get("ambiguous", []) or []),
-        "conflicts": len(gap.get("conflicts", []) or []),
-    }
 
 
 def _max_span() -> int:
@@ -59,8 +41,8 @@ async def _extract_tool_async(job_dir: str) -> Dict[str, Any]:
     out = await _extract_async(job_dir)
 
     # Ensure we report gaps summary
-    gap = _read_json(jdir / "gap_report.json", {})
-    gaps = _summarize_gaps(gap)
+    gap = read_json(jdir / "gap_report.json", {})
+    gaps = summarize_gaps(gap)
     write_status(
         job_id,
         state="running",
@@ -113,7 +95,7 @@ async def _extract_with_window_tool_async(job_dir: str, span: int = 2) -> Dict[s
 
     # Extract explicit numeric cues for the agent
     before = out.get("before") or {}
-    after = out.get("after") or _summarize_gaps(_read_json(jdir / "gap_report.json", {}))
+    after = out.get("after") or summarize_gaps(read_json(jdir / "gap_report.json", {}))
 
     before_missing = int((before or {}).get("missing", 0))
     before_conflicts = int((before or {}).get("conflicts", 0))

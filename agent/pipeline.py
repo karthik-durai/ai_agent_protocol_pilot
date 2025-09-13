@@ -1,6 +1,5 @@
 # agent/pipeline.py
 from __future__ import annotations
-import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List
@@ -8,28 +7,11 @@ from typing import Any, Dict, List
 from storage.paths import write_status
 from agent.protocol_card import run_protocol_extraction_async
 from agent.gap_report import build_gap_report_llm_async
+from agent.utils import read_json, summarize_gaps
 
 # -----------------
-# Small utilities
+# Small utilities (centralized in agent.utils)
 # -----------------
-
-def _read_json(p: Path, default: Any) -> Any:
-    try:
-        if p.exists():
-            return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return default
-
-
-def _summarize_gaps(gap: Dict[str, Any]) -> Dict[str, int]:
-    if not isinstance(gap, dict):
-        return {"missing": 0, "ambiguous": 0, "conflicts": 0}
-    return {
-        "missing": len(gap.get("missing", []) or []),
-        "ambiguous": len(gap.get("ambiguous", []) or []),
-        "conflicts": len(gap.get("conflicts", []) or []),
-    }
 
 
 # -----------------
@@ -47,8 +29,8 @@ async def extract_and_build_gaps(job_dir: str) -> Dict[str, Any]:
 
     write_status(job_id, state="running", step="extract.start")
 
-    pages_obj = _read_json(jdir / "pages.json", {})
-    sections_obj = _read_json(jdir / "sections.json", {})
+    pages_obj = read_json(jdir / "pages.json", {})
+    sections_obj = read_json(jdir / "sections.json", {})
 
     pages: List[Dict[str, Any]] = (
         pages_obj if isinstance(pages_obj, list) else (pages_obj.get("pages") or [])
@@ -67,8 +49,8 @@ async def extract_and_build_gaps(job_dir: str) -> Dict[str, Any]:
     # Build gap report
     await build_gap_report_llm_async(art_dir=jdir.as_posix())
 
-    gap = _read_json(jdir / "gap_report.json", {})
-    summary = _summarize_gaps(gap)
+    gap = read_json(jdir / "gap_report.json", {})
+    summary = summarize_gaps(gap)
 
     write_status(
         job_id,
@@ -97,8 +79,8 @@ async def extract_with_window(job_dir: str, span: int) -> Dict[str, Any]:
 
     write_status(job_id, state="running", step="reextract_wide.start", span=span, last_action="extract_with_window")
 
-    pages_obj = _read_json(jdir / "pages.json", {})
-    sections_obj = _read_json(jdir / "sections.json", {})
+    pages_obj = read_json(jdir / "pages.json", {})
+    sections_obj = read_json(jdir / "sections.json", {})
 
     pages: List[Dict[str, Any]] = (
         pages_obj if isinstance(pages_obj, list) else (pages_obj.get("pages") or [])
@@ -135,8 +117,8 @@ async def extract_with_window(job_dir: str, span: int) -> Dict[str, Any]:
     widened_sections = {"candidates": [{"page": p} for p in widened_pages]}
 
     # Before/after gaps
-    before_gap = _read_json(jdir / "gap_report.json", {})
-    before = _summarize_gaps(before_gap)
+    before_gap = read_json(jdir / "gap_report.json", {})
+    before = summarize_gaps(before_gap)
 
     # Run extraction on widened window
     await run_protocol_extraction_async(
@@ -148,8 +130,8 @@ async def extract_with_window(job_dir: str, span: int) -> Dict[str, Any]:
     # Rebuild gaps
     await build_gap_report_llm_async(art_dir=jdir.as_posix())
 
-    after_gap = _read_json(jdir / "gap_report.json", {})
-    after = _summarize_gaps(after_gap)
+    after_gap = read_json(jdir / "gap_report.json", {})
+    after = summarize_gaps(after_gap)
     improved = (after.get("missing", 0) + after.get("conflicts", 0)) < (before.get("missing", 0) + before.get("conflicts", 0))
 
     write_status(

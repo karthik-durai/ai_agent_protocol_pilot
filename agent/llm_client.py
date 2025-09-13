@@ -1,12 +1,11 @@
 import asyncio
 import json
-import os
 import re
 from typing import Any, Type
 
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from .config import get_llm_config
 

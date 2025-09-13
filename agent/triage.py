@@ -1,9 +1,16 @@
+import hashlib
+import os
+from typing import Any, Dict, List
+
 import fitz  # PyMuPDF
-import os, hashlib
-from typing import List, Dict, Any
-from .llm_client import llm_json_typed
 from storage.paths import write_json
-from .schemas import ImagingVerdict as ImagingVerdictSchema, TitleResponse as TitleSchema, PageClassResponse as PageClassSchema
+
+from .llm_client import llm_json_typed
+from .schemas import (
+    ImagingVerdict as ImagingVerdictSchema,
+    PageClassResponse as PageClassSchema,
+    TitleResponse as TitleSchema,
+)
 
 # ---- MRI-only canonical modalities + normalizer ----
 CANONICAL_MODALITIES = ["MRI"]

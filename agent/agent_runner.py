@@ -24,16 +24,22 @@ def _chat() -> ChatOllama:
 
 def _max_steps() -> int:
     try:
-        return max(1, int(os.getenv("MAX_AGENT_STEPS", "3")))
+        return max(1, int(os.getenv("MAX_AGENT_STEPS", "7")))
     except Exception:
-        return 3
+        return 7
 
 
 SYSTEM = """
 You are a cautious agent tasked with producing a high-confidence, reproducible MRI protocol.
-Act ONLY by calling tools. Your FIRST tool call must be `extract_and_build_gaps(job_dir)`.
+Act ONLY by calling tools.
 
-DECISION RULES (MANDATORY):
+MANDATORY PRE-FLIGHT (in order):
+1) infer_title(job_dir)
+2) imaging_verdict(job_dir)
+3) triage_pages(job_dir)
+Then begin extraction with `extract_and_build_gaps(job_dir)`.
+
+EXTRACTION LOOP RULES (MANDATORY):
 • After `extract_and_build_gaps`, if (missing + conflicts) > 0 AND steps remain,
   you MUST immediately call `extract_with_window(job_dir, span)` (span in 0..4; prefer 2).
 • If your last `extract_with_window` returned `improved=false` AND steps remain,
@@ -51,17 +57,22 @@ Job dir: {job_dir}
 Steps remaining: {steps_remaining}
 
 Instructions:
-1) Call `extract_and_build_gaps(job_dir)` first.
-2) If the tool output includes numeric `missing` and `conflicts` whose sum is > 0,
+1) Pre-flight tools in order: infer_title(job_dir), imaging_verdict(job_dir), triage_pages(job_dir).
+2) Then call `extract_and_build_gaps(job_dir)`.
+3) If the tool output includes numeric `missing` and `conflicts` whose sum is > 0,
    call `extract_with_window(job_dir, span)` next (explicitly choose span in 0..4; prefer 2).
-3) If the previous `extract_with_window` reported `improved=false` and you still have steps remaining,
+4) If the previous `extract_with_window` reported `improved=false` and you still have steps remaining,
    call `extract_with_window` again with a larger span (span' = min(4, previous_span + 1)).
-4) Always include `job_dir` in tool arguments. Do not narrate when a tool call is required.
-5) Stop only when the decision rules say to stop.
+5) Always include `job_dir` in tool arguments. Do not narrate when a tool call is required.
+6) Stop only when the decision rules say to stop.
 
 Examples:
-- Second step: extract_with_window(job_dir="{job_dir}", span=2)
-- Third step (if no improvement): extract_with_window(job_dir="{job_dir}", span=3)
+- First: infer_title(job_dir="{job_dir}")
+- Second: imaging_verdict(job_dir="{job_dir}")
+- Third: triage_pages(job_dir="{job_dir}", top_k=6)
+- Fourth: extract_and_build_gaps(job_dir="{job_dir}")
+- Next: extract_with_window(job_dir="{job_dir}", span=2)
+- Next (if no improvement): extract_with_window(job_dir="{job_dir}", span=3)
 """
 
 

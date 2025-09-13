@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
-from storage.paths import ensure_dirs, new_job_id, write_json, artifacts_dir, read_status, write_status, list_jobs
-from agent.triage import pdf_pages_text, imaging_verdict, triage_pages, infer_title
+from storage.paths import ensure_dirs, new_job_id, write_status
+from agent.triage import pdf_pages_text
 from agent.config import get_llm_config
 from agent.agent_runner import agent_run
 import httpx
@@ -20,55 +20,19 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
     try:
         write_status(job_id, "processing", started_at=datetime.now(timezone.utc).isoformat())
         pages = pdf_pages_text(pdf_path, to_json_path=os.path.join(art_dir, "pages.json"))
-        
-        # Infer paper title with LLM (fallback to heuristic first line or filename)
-        ti = await infer_title(pages)
-        llm_title = (ti.get("title") or "").strip()
-        title_conf = float(ti.get("confidence", 0) or 0)
 
-        # Heuristic fallback if LLM uncertain or empty
+        # Hand off preflight + extraction to the tool-calling agent.
+        # The agent will infer title, compute imaging verdict, triage pages,
+        # then run extraction and gap analysis, updating status along the way.
+        write_status(job_id, "agent starting", started_at=datetime.now(timezone.utc).isoformat())
         try:
-            first_line = (pages[0]["text"].splitlines()[0].strip() if pages and pages[0].get("text") else "")
-        except Exception:
-            first_line = ""
-        fallback_title = first_line if first_line else os.path.basename(pdf_path)
-
-        title_final = llm_title if llm_title else fallback_title
-        write_json(os.path.join(art_dir, "meta.json"), {
-            "title": title_final[:300],
-            "filename": os.path.basename(pdf_path),
-            "title_confidence": title_conf
-        })
-        # Update status to include title while processing
-        write_status(job_id, "processing",
-                     started_at=datetime.now(timezone.utc).isoformat(),
-                     title=title_final[:300],
-                     title_confidence=title_conf)
-
-        verdict = await imaging_verdict(pages)
-        doc_flags = {
-            "is_imaging": bool(verdict.get("is_imaging")),
-            "modalities": verdict.get("modalities") or [],
-            "confidence": float(verdict.get("confidence", 0) or 0),
-            "reasons": verdict.get("reasons") or [],
-            "counter_signals": verdict.get("counter_signals") or []
-        }
-        write_json(os.path.join(art_dir, "doc_flags.json"), doc_flags)
-
-        if doc_flags["is_imaging"]:
-            sections = await triage_pages(pages, top_k=6)
-            write_json(os.path.join(art_dir, "sections.json"), sections)
-
-            # Hand off to the tool-calling agent from the start (bounded by MAX_AGENT_STEPS)
-            write_status(job_id, "agent starting", started_at=datetime.now(timezone.utc).isoformat())
-            try:
-                await agent_run(art_dir)
-            except Exception as e:
-                import traceback
-                print(f"[agent_run] exception: {e!r}")
-                traceback.print_exc()
-                write_status(job_id, "agent error", error=str(e), finished_at=datetime.now(timezone.utc).isoformat())
-                raise
+            await agent_run(art_dir)
+        except Exception as e:
+            import traceback
+            print(f"[agent_run] exception: {e!r}")
+            traceback.print_exc()
+            write_status(job_id, "agent error", error=str(e), finished_at=datetime.now(timezone.utc).isoformat())
+            raise
     except Exception as e:
         write_status(job_id, "error", error=str(e), finished_at=datetime.now(timezone.utc).isoformat())
         raise

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict
+import json
 
 from agent.utils import summarize_gaps_from_dir
 
@@ -35,7 +36,7 @@ Act ONLY by calling tools.
 
 MANDATORY PRE-FLIGHT (in order):
 1) infer_title(job_dir)
-2) imaging_verdict(job_dir)
+2) imaging_verdict(job_dir) — if NON-IMAGING, STOP immediately (no further tools).
 3) triage_pages(job_dir)
 Then begin extraction with `extract_and_build_gaps(job_dir)`.
 
@@ -44,7 +45,7 @@ EXTRACTION LOOP RULES (MANDATORY):
   you MUST immediately call `extract_with_window(job_dir, span)` (span in 0..4; prefer 2).
 • If your last `extract_with_window` returned `improved=false` AND steps remain,
   you MUST try again with a larger span: span' = min(4, previous_span + 1).
-• Stop ONLY when (missing + conflicts) == 0 OR you have zero steps remaining.
+• Stop ONLY when (missing + conflicts) == 0 OR you have zero steps remaining OR the verdict was NON-IMAGING.
 
 OUTPUT RULES:
 • When a tool call is required by the rules, RESPOND WITH A TOOL CALL ONLY — do NOT write any narrative text.
@@ -58,6 +59,7 @@ Steps remaining: {steps_remaining}
 
 Instructions:
 1) Pre-flight tools in order: infer_title(job_dir), imaging_verdict(job_dir), triage_pages(job_dir).
+   - If imaging_verdict indicates NON-IMAGING, STOP.
 2) Then call `extract_and_build_gaps(job_dir)`.
 3) If the tool output includes numeric `missing` and `conflicts` whose sum is > 0,
    call `extract_with_window(job_dir, span)` next (explicitly choose span in 0..4; prefer 2).
@@ -138,6 +140,16 @@ async def agent_run(job_dir: str) -> Dict[str, Any]:
         steps_used = 0
         last_action = None
         agent_output = None
+        # Determine if the imaging verdict classified this as non-imaging
+        non_imaging = False
+        try:
+            flags_path = Path(job_dir) / "doc_flags.json"
+            if flags_path.exists():
+                with flags_path.open("r", encoding="utf-8") as f:
+                    flags = json.load(f) or {}
+                non_imaging = bool(flags.get("is_imaging") is False)
+        except Exception:
+            non_imaging = False
         try:
             steps = result.get("intermediate_steps", []) if isinstance(result, dict) else []
             steps_used = len(steps)
@@ -154,7 +166,9 @@ async def agent_run(job_dir: str) -> Dict[str, Any]:
 
         missing = gaps_after.get("missing", 0)
         conflicts = gaps_after.get("conflicts", 0)
-        if (missing + conflicts) == 0:
+        if non_imaging:
+            reason = "non_imaging"
+        elif (missing + conflicts) == 0:
             reason = "gaps_resolved"
         elif steps_used >= max_steps:
             reason = "budget_exhausted"

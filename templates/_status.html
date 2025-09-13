@@ -1,7 +1,7 @@
 {% set state = status.get('state','unknown') %}
-{% if state in ['queued','processing'] %}
+{% if state in ['queued','processing','running'] %}
 <div class="mb-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-    {{ 'Queued…' if state == 'queued' else 'Processing…' }} This page auto-refreshes.
+    {{ 'Queued…' if state == 'queued' else 'Processing…' if state == 'processing' else 'Running…' }} This page auto-refreshes.
 </div>
 {% elif state == 'error' %}
 <div class="mb-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-2">
@@ -23,6 +23,7 @@
     'gaps_resolved': 'All critical gaps resolved',
     'budget_exhausted': 'Step budget exhausted',
     'model_chose_stop': 'Model chose to stop',
+    'non_imaging': 'Non‑imaging (verdict)',
     'exception': 'Exception during run'
     } %}
     <p class="mb-2">State:

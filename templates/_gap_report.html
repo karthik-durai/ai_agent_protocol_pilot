@@ -25,14 +25,13 @@
         <p class="text-sm text-slate-500 italic">Waiting for gap analysis…</p>
         {% else %}
         {% set labels = {
-        'slice_thickness_mm': 'Slice thickness',
-        'kernel': 'Reconstruction kernel',
-        'kernel_family': 'Kernel family',
-        'kVp': 'kVp',
-        'mAs': 'mAs',
-        'voxel_size_mm': 'Voxel size (mm)',
-        'matrix': 'Matrix',
-        'fov_mm': 'FOV (mm)'
+        'sequence_type': 'Sequence type',
+        'TR_ms': 'TR (ms)',
+        'TE_ms': 'TE (ms)',
+        'flip_deg': 'Flip angle (°)',
+        'field_strength_T': 'Field strength (T)',
+        'inplane_res_mm': 'In‑plane resolution (mm)',
+        'slice_thickness_mm': 'Slice thickness (mm)'
         } %}
 
         {# --- Missing --- #}

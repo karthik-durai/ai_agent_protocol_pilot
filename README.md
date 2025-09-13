@@ -33,14 +33,39 @@ This app auto‑loads `.env` via `python-dotenv`.
 ## What Happens After Upload
 
 1. Reads the PDF with PyMuPDF and writes `pages.json` (per-page text + sha1) under `artifacts/<job>/`.
-2. Infers a paper title via LLM (`meta.json`), with fallback to first line or filename.
-3. Imaging verdict via LLM → `doc_flags.json` (is_imaging, modalities, reasons, confidence).
-4. If imaging is true:
-   - Triage candidate pages via LLM → `sections.json`.
-   - Extract parameter candidates around each page window → `imaging_candidates.jsonl`.
-   - Adjudicate winners via LLM → `imaging_extracted.json` (drives the Protocol Card).
-   - Build an LLM-assisted `gap_report.json` (missing/ambiguous/conflicts/questions), with safe stub fallback on failure.
-5. UI polls panels to display Status, Imaging Verdict, Candidate Pages, Protocol Card, and Gap Report.
+2. An agent runs preflight tools in order:
+   - infer_title → writes `meta.json`
+   - imaging_verdict → writes `doc_flags.json` (STOP if non-imaging)
+   - triage_pages → writes `sections.json`
+3. Extraction + gaps:
+   - extract_and_build_gaps → writes `imaging_candidates.jsonl`, `imaging_extracted.json`, `gap_report.json`
+   - If gaps remain (missing + conflicts > 0), agent re-extracts with widened window (`extract_with_window`, span 2→4) within a small step budget.
+4. UI polls panels to display Status, Imaging Verdict, Candidate Pages, Protocol Card, and Gap Report.
+
+## Architecture
+
+High-level view of the pipeline and components.
+
+```mermaid
+flowchart TD
+    U[User uploads PDF] --> A[api/main: save paper.pdf]
+    A --> P[triage.pdf_pages_text → pages.json]
+    P --> R[agent runner]
+
+    subgraph Agent
+      R --> T1[infer_title → meta.json]
+      T1 --> V[imaging_verdict → doc_flags.json]
+      V -- non-imaging --> Q[[STOP → quarantine]]
+      V -- MRI --> T2[triage_pages → sections.json]
+      T2 --> E1[extract_and_build_gaps]
+      E1 --> G[gap_report.json]
+      E1 -->|gaps remain| E2[extract_with_window(span 2→4)]
+      E2 --> G
+      E2 -->|repeat until improved or budget used| E2
+    end
+
+    G --> UI[Web UI panels]
+```
 
 ## UI Routes
 
@@ -93,6 +118,8 @@ DATA_ROOT/
 
 - `api/main.py` — FastAPI app, upload and background processing pipeline (includes `/healthz/llm`)
 - `web/routes.py` — UI routes and HTMX panel rendering (Jinja templates under `templates/`)
+- `agent/agent_runner.py` — Orchestrates preflight + extraction using tool-calling agent and prompts (stop on non-imaging; re-extraction budget only)
+- `agent/tools.py` — Tool implementations (infer_title, imaging_verdict, triage_pages, extract/reeextract)
 - `agent/triage.py` — PDF text extraction, title inference, imaging verdict, and page triage (LLM)
 - `agent/protocol_card.py` — Extract candidates from windows and adjudicate winners (LLM)
 - `agent/gap_report.py` — Build a structured gap report with validation (LLM)
@@ -119,4 +146,3 @@ DATA_ROOT/
 - LLM timeouts/errors: check `LLM_BASE_URL`, the `/healthz/llm` endpoint, model availability on your LLM server (`/api/tags`), and server logs.
 - If a proxy serves HTML on `/api/*`, switch scheme (`https://` vs `http://`) or fix the proxy config.
 - Nothing shows in UI panels: confirm artifacts exist in `artifacts/<job_id>/` and the server logs don’t show errors.
-

@@ -91,7 +91,7 @@ async def _imaging_verdict_tool_async(job_dir: str) -> Dict[str, Any]:
     pages_obj = read_json(jdir / "pages.json", {})
     pages = pages_obj if isinstance(pages_obj, list) else (pages_obj.get("pages") or [])
 
-    write_status(job_id, state="running", step="verdict.start", last_action="imaging_verdict")
+    write_status(job_id, state="running", step="mri_verdict.start", last_action="imaging_verdict")
     resp = await _imaging_verdict_async(pages)
 
     payload = {
@@ -105,7 +105,7 @@ async def _imaging_verdict_tool_async(job_dir: str) -> Dict[str, Any]:
     write_status(
         job_id,
         state="running",
-        step="verdict.done",
+        step="mri_verdict.done",
         last_action="imaging_verdict",
         **payload,
     )

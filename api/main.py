@@ -5,9 +5,8 @@ from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
 from pydantic import BaseModel
 from storage.paths import ensure_dirs, new_job_id, write_json, artifacts_dir, read_status, write_status, list_jobs
 from agent.triage import pdf_pages_text, imaging_verdict, triage_pages, infer_title
-from agent.protocol_card import run_protocol_extraction_async
-from agent.gap_report import build_gap_report_llm_async
 from agent.config import get_llm_config
+from agent.agent_runner import agent_run
 import httpx
 
 app = FastAPI(title="Protocol Pilot (lite)")
@@ -59,19 +58,17 @@ async def _process_job_async(job_id: str, pdf_path: str, art_dir: str):
         if doc_flags["is_imaging"]:
             sections = await triage_pages(pages, top_k=6)
             write_json(os.path.join(art_dir, "sections.json"), sections)
-            # M3a Step 2: populate imaging_candidates.jsonl (safe, non-fatal)
-            try:
-                await run_protocol_extraction_async(pages, sections, art_dir)
-            except Exception:
-                pass
 
-            # Gap Report (LLM-assisted): generate gaps & author-question suggestions (non-fatal)
+            # Hand off to the tool-calling agent from the start (bounded by MAX_AGENT_STEPS)
+            write_status(job_id, "agent starting", started_at=datetime.now(timezone.utc).isoformat())
             try:
-                await build_gap_report_llm_async(art_dir)
-            except Exception:
-                pass
-
-        write_status(job_id, "done", finished_at=datetime.now(timezone.utc).isoformat())
+                await agent_run(art_dir)
+            except Exception as e:
+                import traceback
+                print(f"[agent_run] exception: {e!r}")
+                traceback.print_exc()
+                write_status(job_id, "agent error", error=str(e), finished_at=datetime.now(timezone.utc).isoformat())
+                raise
     except Exception as e:
         write_status(job_id, "error", error=str(e), finished_at=datetime.now(timezone.utc).isoformat())
         raise

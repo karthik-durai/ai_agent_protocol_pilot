@@ -6,13 +6,8 @@ from typing import Any, Dict, List
 
 from storage.paths import write_status
 from agent.protocol_card import run_protocol_extraction_async
-from agent.gap_report import build_gap_report_llm_async
+from agent.gap_report import build_gap_report_async
 from agent.utils import read_json, summarize_gaps
-
-# -----------------
-# Small utilities (centralized in agent.utils)
-# -----------------
-
 
 # -----------------
 # Core primitives (Step 1)
@@ -47,7 +42,7 @@ async def extract_and_build_gaps(job_dir: str) -> Dict[str, Any]:
     )
 
     # Build gap report
-    await build_gap_report_llm_async(art_dir=jdir.as_posix())
+    await build_gap_report_async(art_dir=jdir.as_posix())
 
     gap = read_json(jdir / "gap_report.json", {})
     summary = summarize_gaps(gap)

@@ -31,42 +31,27 @@ def _max_steps() -> int:
 
 
 SYSTEM = """
-You are a cautious agent tasked with producing a high-confidence, reproducible MRI protocol.
-Act ONLY by calling tools — do not narrate when a tool call is expected.
+You are a cautious, goal‑directed tool‑using agent that produces a high‑confidence MRI protocol from a paper’s text.
+Act only by calling tools. Do not narrate. Always include job_dir in tool arguments.
+Choose tool sequence autonomously; minimize redundant calls; stop if you conclude the paper is not MRI.
 
-Available tools (high-level):
-• imaging_verdict(job_dir): decide if the paper reports MRI acquisition; writes doc_flags.json (is_imaging, confidence, reasons). If non‑MRI, STOP.
-• infer_title(job_dir): infer the paper title; writes meta.json. Prefer to run this AFTER imaging_verdict confirms MRI, to help users identify the paper in the UI.
-• triage_pages(job_dir): classify pages to find likely acquisition/methods; writes sections.json.
-• extract_and_build_gaps(job_dir): extract → adjudicate → build missing‑only gap report; writes imaging_extracted.json and gap_report.json.
+Tools:
+- imaging_verdict(job_dir): assess whether the paper reports MRI acquisition; writes doc_flags.json.
+- infer_title(job_dir): infer the paper title; writes meta.json.
+- triage_pages(job_dir): pick likely acquisition/method pages; writes sections.json.
+- extract_and_build_gaps(job_dir): extract → adjudicate → build imaging_extracted.json and gap_report.json.
 
-Decision policy:
-• Goal: produce winners (protocol card) and a gap report with minimal calls.
-• First, call imaging_verdict(job_dir); STOP immediately if it indicates NON‑IMAGING.
-• After confirming MRI, if the title is missing or empty, call infer_title(job_dir) to populate the UI.
-• Before extraction, ensure sections.json exists (call triage_pages if needed).
-• When ready, run extract_and_build_gaps to generate winners + gap report.
-
-Output rules:
-• Respond with TOOL CALLS ONLY when taking an action.
-• Always include job_dir in tool arguments.
+Output:
+- When acting, respond with a single TOOL CALL only.
+- Always pass job_dir in arguments.
 """
 
 HUMAN = """
 Job dir: {job_dir}
 
-Context:
-- You decide which tools to call and in what order based on the policy above.
-- Start with imaging_verdict(job_dir); STOP immediately if NON‑IMAGING.
-- After confirming MRI, if the title is missing or empty, call infer_title(job_dir) to populate meta.json.
-- Otherwise, ensure sections.json exists (triage_pages), then run extract_and_build_gaps to produce winners and the gap report.
-
-Constraints:
-- Respond with tool calls only when acting; always include job_dir in arguments.
-
-Examples (not prescriptive):
-- imaging_verdict(job_dir="{job_dir}") → infer_title(job_dir="{job_dir}") → triage_pages(job_dir="{job_dir}") → extract_and_build_gaps(job_dir="{job_dir}")
-- imaging_verdict(job_dir="{job_dir}") → triage_pages(job_dir="{job_dir}") → extract_and_build_gaps(job_dir="{job_dir}")
+Goal: produce winners for core MRI fields and a gap report.
+Use any tools as needed; be compute‑conscious.
+Respond with tool calls only when acting; always include job_dir in arguments.
 """
 
 

@@ -55,15 +55,8 @@ def _write_stub_gap_report(
 # Public API
 # -----------------------------
 async def build_gap_report_async(art_dir: str) -> str:
-    """Build gap_report.json deterministically from winners (no LLM).
-
-    Logic (confidence-agnostic by request):
-    - REQUIRED (ordered): sequence_type, TR_ms, TE_ms, flip_deg, field_strength_T, inplane_res_mm, slice_thickness_mm
-    - Winners are authoritative for presence; ignore confidence values.
-    - missing = REQUIRED minus winners.keys() (keep REQUIRED order)
-    - missing_low_conf = []
-    - Draft up to 3 short author questions based on missing fields.
-    """
+    "Build gap_report.json deterministically from winners (no LLM)."
+    
     extracted_path = os.path.join(art_dir, EXTRACTED_FILENAME)
     candidates_path = os.path.join(art_dir, CANDIDATES_FILENAME)
     flags_path = os.path.join(art_dir, FLAGS_FILENAME)
@@ -88,7 +81,6 @@ async def build_gap_report_async(art_dir: str) -> str:
     missing = [f for f in REQUIRED_FIELDS if f not in present]
     missing_low_conf: List[str] = []
 
-    # Draft up to 3 concise questions for the most impactful missing fields
     q_templates = {
         "TR_ms": "Please confirm the repetition time (TR) used.",
         "TE_ms": "Please confirm the echo time (TE) used.",

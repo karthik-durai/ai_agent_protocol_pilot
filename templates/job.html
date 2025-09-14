@@ -1,8 +1,9 @@
 {% extends "base.html" %}{% block content %}
-<h1 class="text-xl font-semibold mb-6" hx-get="/job/{{ job_id }}/panel/title" hx-trigger="load, every 3s" hx-swap="innerHTML">
+<h1 class="text-xl font-semibold mb-6" hx-get="/job/{{ job_id }}/panel/title" hx-trigger="load, every 3s"
+    hx-swap="innerHTML">
     {{ meta.title or ('Job ' ~ job_id) }}
     <span class="block font-mono text-xs text-slate-500">{{ job_id }}</span>
-    
+
 </h1>
 
 <!-- Top strip: Status + Verdict (docflags) side-by-side -->
@@ -10,22 +11,26 @@
     <div id="status" class="md:col-span-2" hx-get="/job/{{ job_id }}/panel/status" hx-trigger="load, every 3s"
         hx-swap="innerHTML"></div>
 
-    <div id="docflags" class="md:col-span-1" hx-get="/job/{{ job_id }}/panel/docflags" hx-trigger="load, every 5s"
+    <div id="docflags" class="md:col-span-1" hx-get="/job/{{ job_id }}/panel/docflags" hx-trigger="load, every 3s"
         hx-swap="innerHTML"></div>
 </div>
 
+{# Hide main content if imaging verdict says non‑MRI #}
+{% set is_mri = (doc_flags.is_imaging if doc_flags is defined and doc_flags else None) %}
+{% if is_mri is not false %}
 <!-- Main content: Left = Protocol Card + Gap Report, Right = Candidates -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-max">
     <!-- Left column (prominent): Protocol Card + Gap Report stacked -->
     <div class="space-y-6">
-        <div id="protocol-card" hx-get="/job/{{ job_id }}/panel/protocol-card" hx-trigger="load, every 5s"
+        <div id="protocol-card" hx-get="/job/{{ job_id }}/panel/protocol-card" hx-trigger="load, every 3s"
             hx-swap="innerHTML"></div>
 
-        <div id="gap-report" hx-get="/job/{{ job_id }}/panel/gap-report" hx-trigger="load, every 5s"
+        <div id="gap-report" hx-get="/job/{{ job_id }}/panel/gap-report" hx-trigger="load, every 3s"
             hx-swap="innerHTML"></div>
     </div>
 
     <!-- Right column: Methods/Acquisition candidate pages -->
-    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
+    <div id="sections" hx-get="/job/{{ job_id }}/panel/sections" hx-trigger="load, every 3s" hx-swap="innerHTML"></div>
 </div>
+{% endif %}
 {% endblock %}

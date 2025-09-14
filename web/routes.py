@@ -44,11 +44,19 @@ async def protocols(req: Request):
 async def job(req: Request, job_id: str):
     art = artifacts_dir(job_id)
     meta = {}
+    doc_flags = None
     mp = os.path.join(art, "meta.json")
     if os.path.exists(mp):
         with open(mp, "r", encoding="utf-8") as f:
             meta = json.load(f) or {}
-    return TEMPLATES.TemplateResponse("job.html", {"request": req, "job_id": job_id, "meta": meta})
+    dfp = os.path.join(art, "doc_flags.json")
+    if os.path.exists(dfp):
+        try:
+            with open(dfp, "r", encoding="utf-8") as f:
+                doc_flags = json.load(f) or None
+        except Exception:
+            doc_flags = None
+    return TEMPLATES.TemplateResponse("job.html", {"request": req, "job_id": job_id, "meta": meta, "doc_flags": doc_flags})
 
 # Panels (HTMX fragments)
 @router.get("/job/{job_id}/panel/title", response_class=HTMLResponse)

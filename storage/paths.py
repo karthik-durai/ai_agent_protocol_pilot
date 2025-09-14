@@ -24,8 +24,28 @@ def status_path(job_id: str) -> str:
     return os.path.join(artifacts_dir(job_id), "status.json")
 
 def write_status(job_id: str, state: str, **extra):
-    rec = {"state": state, "step": extra.get("step")}
-    write_json(status_path(job_id), rec)
+    """
+    Persist job status with richer telemetry.
+    - Merges with any existing status.json instead of overwriting unrelated fields.
+    - Always updates 'state'.
+    - Updates 'step' only if provided in extras.
+    - Includes all extra keyword fields (e.g., stop_reason, steps_used, gaps_after, agent_output).
+    """
+    path = status_path(job_id)
+    # Load existing status, if any
+    current = {}
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                current = json.load(f) or {}
+    except Exception:
+        current = {}
+    # Merge extras and required fields
+    rec = {**current, **extra}
+    rec["state"] = state
+    if "step" in extra:
+        rec["step"] = extra.get("step")
+    write_json(path, rec)
     return rec
 
 def read_status(job_id: str):

@@ -13,8 +13,7 @@
             {% for j in jobs %}
             <tr class="border-t">
                 <td class="pr-4">
-                    <div class="font-medium">{{ j.title or 'Untitled' }}</div>
-                    <div class="font-mono text-xs text-slate-500">{{ j.job_id }}</div>
+                    <div class="font-medium">{{ j.job_id or 'Untitled' }}</div>
                 </td>
                 <td class="pr-4">
                     <span class="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700">{{ j.reason }}</span>

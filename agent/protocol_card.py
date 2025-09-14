@@ -208,9 +208,18 @@ def _read_jsonl(path: str) -> List[Dict[str, Any]]:
     return items
 
 ADJ_SYS = (
-    "You are a careful adjudicator for MRI acquisition parameters. From multiple candidate "
-    "extractions with evidence, choose the best value per field and explain briefly. "
-    "Output STRICT JSON only. Do not invent values; omit a field if evidence is insufficient."
+    "You are a careful adjudicator for MRI acquisition parameters. Use ONLY the provided candidates "
+    "(with their evidence) to select at most one best value per field. If no acceptable candidate exists, omit the field.\n\n"
+    "Acceptance criteria (apply EXACTLY):\n"
+    "- Candidates must explicitly describe parameters USED IN THIS STUDY (not examples/generic text).\n"
+    "- Confidence threshold: choose a winner only if confidence ≥ 0.55. Otherwise omit the field.\n"
+    "- Reject candidates whose evidence contains phrases like 'e.g.', 'for example', 'such as', 'typically', 'commonly', 'usually', 'recommended', 'default', 'illustrative', 'not found', 'not reported'.\n"
+    "- In‑plane resolution: NEVER accept evidence that mentions FOV (e.g., 'FOV', 'FOV (mm2)', 'mm^2'); accept only text that uses 'resolution', 'in‑plane', 'voxel', or 'isotropic'.\n"
+    "- Prefer explicit labels/tables and higher confidence; break ties with clearer evidence consistency.\n\n"
+    "Output contract:\n"
+    "- Output STRICT JSON only.\n"
+    "- Do NOT invent or infer values not present in the candidate list.\n"
+    "- For any field you include, ensure the chosen candidate meets the criteria above; otherwise omit the field."
 )
 
 ADJ_USER_TMPL = """CANDIDATES grouped by field. Each item: {{value, units, page, evidence, confidence}}.
@@ -231,10 +240,13 @@ Return EXACTLY this JSON:
 }}
 
 Rules:
-- Choose at most one best entry per field; omit a field if no solid evidence.
-- Prefer explicit labels and table entries; prefer higher confidence; break ties with clearer evidence and consistency.
+- Choose at most one best entry per field; if NO acceptable candidate exists, OMIT the field.
+- Accept a candidate only if its confidence ≥ 0.55 AND its evidence is an explicit assertion for THIS study (not an example).
+- Reject candidates whose evidence contains: e.g., for example, such as, typically, commonly, usually, recommended, default, illustrative, not found, not reported.
+- For in‑plane resolution, NEVER use FOV evidence (e.g., "FOV", "FOV (mm2)", "mm^2"); only accept text that uses resolution/in‑plane/voxel/isotropic. If isotropic value v → [v,v].
+- Prefer explicit labels/tables and higher confidence; break ties with clearer evidence and consistency.
 - Units: TR/TE in ms, flip in deg, field strength in T, in‑plane in mm.
-- STRICT JSON only.
+- STRICT JSON only; do not invent values that are not present in the candidates list.
 """
 
 

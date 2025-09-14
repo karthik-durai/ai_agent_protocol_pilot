@@ -44,6 +44,8 @@
 
         {% if not ctx %}
         <p class="text-sm text-slate-500 italic">Waiting for extraction…</p>
+        {% elif ctx|length == 0 %}
+        <p class="text-sm text-slate-500 italic">No protocol extracted.</p>
         {% else %}
         <table class="w-full table-fixed">
             <tbody class="divide-y divide-slate-200">

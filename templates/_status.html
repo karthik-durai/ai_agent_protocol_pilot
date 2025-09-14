@@ -19,6 +19,7 @@
     {% set max_steps = status.get('max_steps') %}
     {% set gaps = status.get('gaps_after') or status.get('gaps') or {} %}
     {% set agent_output = status.get('agent_output') %}
+    {% set top_k = status.get('top_k') %}
     {% set stop_map = {
     'gaps_resolved': 'All critical gaps resolved',
     'budget_exhausted': 'Step budget exhausted',
@@ -36,6 +37,12 @@
             <span class="font-semibold">Current step:</span>
             <span class="ml-1 text-slate-700">{{ step or '—' }}</span>
         </div>
+        {% if top_k is not none %}
+        <div>
+            <span class="font-semibold">Triage pages (top_k):</span>
+            <span class="ml-1 text-slate-700">{{ top_k }}</span>
+        </div>
+        {% endif %}
     </div>
     {% if gaps %}
     <div class="mt-3 text-sm">

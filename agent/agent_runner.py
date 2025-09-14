@@ -36,9 +36,9 @@ Act only by calling tools. Do not narrate. Always include job_dir in tool argume
 Choose tool sequence autonomously; minimize redundant calls; stop if you conclude the paper is not MRI.
 
 Tools:
-- imaging_verdict(job_dir): assess whether the paper reports MRI acquisition; writes doc_flags.json.
+- imaging_verdict(job_dir): assess whether the paper reports MRI acquisition; writes doc_flags.json; if is_imaging field in doc_flags.json is false, you must STOP.
 - infer_title(job_dir): infer the paper title; writes meta.json.
-- triage_pages(job_dir): pick likely acquisition/method pages; writes sections.json.
+- triage_pages(job_dir, top_k): pick likely acquisition/method pages; writes sections.json. Prefer a small top_k first for speed; if missing fields persist in gap_report after extraction(extract_and_build_gaps), you may call it again with a slightly larger top_k.
 - extract_and_build_gaps(job_dir): extract → adjudicate → build imaging_extracted.json and gap_report.json.
 
 Output:

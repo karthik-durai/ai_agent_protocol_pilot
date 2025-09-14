@@ -13,20 +13,19 @@ EXTRACTED_FILENAME = "imaging_extracted.json"
 # --- M3a Step 2: strict-JSON extraction prompts (MRI) ---
 EXTRACT_MRI_SYS = (
     "You are a precise information extraction model for MRI imaging methods. "
-    "Extract ONLY when the text asserts the actual acquisition used in THIS paper. "
-    "Anchor every value to an exact substring. Normalize MRI units to TR/TE in ms, flip in degrees, "
-    "field strength in Tesla, in‑plane resolution in mm, and slice thickness in mm. "
+    "Extract ONLY when the text asserts the actual acquisition used in THIS paper, and ONLY for the allowed MRI fields listed below. "
+    "Anchor every value to an exact substring. Normalize units strictly (TR/TE in ms; flip in degrees; field strength in Tesla; in‑plane resolution in mm; slice thickness in mm). "
     "Output STRICT JSON only as specified. Do not include commentary.\n\n"
+    "Allowed MRI fields (extract ONLY these): sequence_type, TR_ms, TE_ms, flip_deg, field_strength_T, inplane_res_mm, slice_thickness_mm.\n"
+    "MRI‑only scope: ignore non‑MRI modalities (e.g., CT, PET, ultrasound).\n\n"
     "Acceptance cues (extract ONLY when present):\n"
-    "- Explicit assertions: 'was', 'were', 'used', 'set to', 'acquired with', 'parameters were', 'TR =', "
-    "table cells with concrete values for this study.\n"
+    "- Explicit assertions: 'was', 'were', 'used', 'set to', 'acquired with', 'parameters were', 'TR =', table cells with concrete values for this study.\n"
     "- Clear table entries of study parameters (not recommendations/examples).\n\n"
     "Rejection cues (NEVER extract from these; omit instead):\n"
-    "- Example/generic language: 'e.g.', 'for example', 'such as', 'for instance', 'typically', 'commonly', 'usually', "
-    "'may', 'might', 'can', 'recommended', 'default', 'illustrative'.\n"
+    "- Example/generic language: 'e.g.', 'for example', 'such as', 'for instance', 'typically', 'commonly', 'usually', 'may', 'might', 'can', 'recommended', 'default', 'illustrative'.\n"
     "- Guidance or background text not describing this study's acquisition.\n"
-    "- In‑plane resolution: NEVER derive from FOV; strings like 'FOV', 'FOV (mm2)', 'mm^2', or dimensions that clearly denote field of view MUST NOT be mapped to in‑plane resolution. "
-    "Extract resolution only from phrases like 'resolution', 'in‑plane', 'voxel', or 'isotropic'.\n\n"
+    "- In‑plane resolution: NEVER derive from FOV; strings like 'FOV', 'FOV (mm2)', 'mm^2', or dimensions that clearly denote field of view MUST NOT be mapped to in‑plane resolution. Extract resolution only from phrases like 'resolution', 'in‑plane', 'voxel', or 'isotropic'.\n\n"
+    "Plausibility guards (reject otherwise): TR_ms ~50..20000; TE_ms ~1..500; flip_deg 0..180; field_strength_T 0.2..12; inplane_res_mm elements ~0.2..10; slice_thickness_mm ~0.2..10.\n\n"
     "If uncertain or only examples are present, DO NOT emit a candidate (do not guess)."
 )
 
@@ -40,11 +39,11 @@ Center page index (zero-based): {center_page}
 IMPORTANT: Use only the TEXT WINDOW above as evidence. Ignore any values in these instructions; do NOT copy example numbers. Extract only if supported by the TEXT WINDOW.
 
 FIELDS TO EXTRACT (emit ONLY when supported by explicit text in the TEXT WINDOW):
-- sequence_type (string) — explicit sequence name used (e.g., T1w, T2w, FLAIR, DWI, EPI, GRE, SE, MPRAGE)
+- sequence_type (string) — explicit MRI sequence type used (e.g., T1w, T2w, FLAIR, DWI, EPI, GRE, SE, MPRAGE)
 - TR_ms (number, ms) — explicit TR reported in the text
 - TE_ms (number, ms) — explicit TE reported in the text
 - flip_deg (number, degrees) — explicit flip angle reported in the text
-- field_strength_T (number, Tesla) — explicit field strength reported in the text
+- field_strength_T (number, Tesla) — explicit MRI field strength reported in the text
 - inplane_res_mm ([x,y] numbers, mm) — explicit in‑plane resolution wording (e.g., "resolution", "in‑plane", "voxel", "isotropic"); if isotropic, output [v,v]; NEVER derive from FOV
 - slice_thickness_mm (number, mm) — explicit slice thickness reported in the text
 
@@ -212,7 +211,8 @@ ADJ_SYS = (
     "(with their evidence) to select at most one best value per field. If no acceptable candidate exists, omit the field.\n\n"
     "Acceptance criteria (apply EXACTLY):\n"
     "- Candidates must explicitly describe parameters USED IN THIS STUDY (not examples/generic text).\n"
-    "- Confidence threshold: choose a winner only if confidence ≥ 0.55. Otherwise omit the field.\n"
+    "- High‑confidence preference: if ANY candidate for a field has confidence == 1.0 and passes all other checks, select one of those (prefer explicit table entries and the clearest evidence).\n"
+    "- Otherwise, choose a winner only if confidence ≥ 0.55. If no such candidate exists, omit the field.\n"
     "- Reject candidates whose evidence contains phrases like 'e.g.', 'for example', 'such as', 'typically', 'commonly', 'usually', 'recommended', 'default', 'illustrative', 'not found', 'not reported'.\n"
     "- In‑plane resolution: NEVER accept evidence that mentions FOV (e.g., 'FOV', 'FOV (mm2)', 'mm^2'); accept only text that uses 'resolution', 'in‑plane', 'voxel', or 'isotropic'.\n"
     "- Prefer explicit labels/tables and higher confidence; break ties with clearer evidence consistency.\n\n"
@@ -226,27 +226,31 @@ ADJ_USER_TMPL = """CANDIDATES grouped by field. Each item: {{value, units, page,
 
 {grouped}
 
-Return EXACTLY this JSON:
+Return a JSON object with ONLY the fields you choose (omit absent ones). Structure:
+- Top-level key "fields" (object)
+- For each chosen field name, provide an object with keys:
+  - "value": number|string|[number,number] (actual value from a chosen candidate)
+  - "units": string ("ms"|"deg"|"T"|"mm"|"")
+  - "page": integer (page index)
+  - "evidence": string (short substring from the candidate)
+  - "confidence": number (0.0–1.0)
+  - "reason": string (short rationale)
+
+Example shape (do NOT copy these example numbers/strings; use real values from candidates):
 {{
   "fields": {{
-    "sequence_type": {{"value": "<str>", "units": "", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "TR_ms": {{"value": <number>, "units": "ms", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "TE_ms": {{"value": <number>, "units": "ms", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "flip_deg": {{"value": <number>, "units": "deg", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "field_strength_T": {{"value": <number>, "units": "T", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "inplane_res_mm": {{"value": [<number>,<number>], "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}},
-    "slice_thickness_mm": {{"value": <number>, "units": "mm", "page": <int>, "evidence": "<str>", "confidence": <0.0-1.0>, "reason": "<short>"}}
+    "TR_ms": {{"value": 1234, "units": "ms", "page": 3, "evidence": "TR = 1234 ms", "confidence": 0.90, "reason": "explicit table entry"}}
   }}
 }}
 
 Rules:
-- Choose at most one best entry per field; if NO acceptable candidate exists, OMIT the field.
-- Accept a candidate only if its confidence ≥ 0.55 AND its evidence is an explicit assertion for THIS study (not an example).
+- Choose at most one best entry per field; if NO acceptable candidate exists, OMIT the field (do not include a placeholder key).
+- If ANY candidate for a field has confidence == 1.0 and passes the other rules, SELECT one of those (prefer explicit table entries and the clearest evidence). Otherwise accept a candidate only if its confidence ≥ 0.55 AND its evidence is an explicit assertion for THIS study (not an example).
 - Reject candidates whose evidence contains: e.g., for example, such as, typically, commonly, usually, recommended, default, illustrative, not found, not reported.
 - For in‑plane resolution, NEVER use FOV evidence (e.g., "FOV", "FOV (mm2)", "mm^2"); only accept text that uses resolution/in‑plane/voxel/isotropic. If isotropic value v → [v,v].
 - Prefer explicit labels/tables and higher confidence; break ties with clearer evidence and consistency.
 - Units: TR/TE in ms, flip in deg, field strength in T, in‑plane in mm.
-- STRICT JSON only; do not invent values that are not present in the candidates list.
+- STRICT JSON only; do not invent values not present in the candidates list. Do NOT include placeholders from this instruction; use actual values from candidates.
 """
 
 
@@ -351,5 +355,5 @@ async def adjudicate_candidates_async(art_dir: str) -> Dict[str, str]:
         coerced = _coerce_field(fname, entry)
         if coerced is not None:
             final_fields[fname] = coerced
-
+    
     return {"extracted": _write_extracted(art_dir, final_fields)}

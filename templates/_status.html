@@ -51,13 +51,6 @@
             stop_map.get(stop_reason, stop_reason) }}</span>
     </div>
     {% endif %}
-    {% if agent_output %}
-    <details class="mt-3">
-        <summary class="cursor-pointer text-sm text-indigo-700">Show agent output</summary>
-        <pre
-            class="mt-2 text-xs bg-slate-50 border border-slate-200 rounded p-2 overflow-auto whitespace-pre-wrap">{{ agent_output }}</pre>
-    </details>
-    {% endif %}
     <div class="mt-4 pt-4 border-t border-slate-200 text-sm">
         <span class="font-semibold">Artifacts:</span>
         {% if files %}

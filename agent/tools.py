@@ -19,11 +19,6 @@ from agent.triage import (
 )
 
 # -----------------
-# Small helpers (centralized in agent.utils)
-# -----------------
-
-
-# -----------------
 # Tool A: infer_title (from pages.json)
 # -----------------
 class InferTitleSchema(BaseModel):

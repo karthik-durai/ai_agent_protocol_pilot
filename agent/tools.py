@@ -28,13 +28,25 @@ from agent.triage import (
 # -----------------
 class InferTitleSchema(BaseModel):
     job_dir: str = Field(..., description="Absolute path to the job's artifacts directory.")
-    max_pages: conint(ge=1, le=4) = Field(2, description="Number of early pages to consider.")
-    max_chars: conint(ge=500, le=15000) = Field(3000, description="Max characters to pass to the LLM.")
+    # Make optional and clamp inside the tool to avoid validation errors from LLM-suggested values
+    max_pages: int | None = Field(None, description="Number of early pages to consider (clamped to 1..4; default 2).")
+    max_chars: int | None = Field(None, description="Max characters to pass to the LLM (clamped to 500..15000; default 3000).")
 
 
-async def _infer_title_tool_async(job_dir: str, max_pages: int = 2, max_chars: int = 3000) -> Dict[str, Any]:
+async def _infer_title_tool_async(job_dir: str, max_pages: int | None = None, max_chars: int | None = None) -> Dict[str, Any]:
     jdir = Path(job_dir)
     job_id = jdir.name
+    # Defensive clamp of optional params
+    try:
+        mp = 2 if max_pages is None else int(max_pages)
+    except Exception:
+        mp = 2
+    max_pages = max(1, min(4, mp))
+    try:
+        mc = 3000 if max_chars is None else int(max_chars)
+    except Exception:
+        mc = 3000
+    max_chars = max(500, min(15000, mc))
     pages_obj = read_json(jdir / "pages.json", {})
     pages = pages_obj if isinstance(pages_obj, list) else (pages_obj.get("pages") or [])
 

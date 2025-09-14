@@ -3,9 +3,27 @@
     <section class="col-span-2 bg-white rounded-xl shadow p-5">
         <h2 class="text-lg font-semibold mb-3">Upload a paper</h2>
         <form method="post" action="/ui/upload" enctype="multipart/form-data" class="space-y-3">
-            <input type="file" name="paper" accept="application/pdf" class="block w-full" />
-            <button class="px-4 py-2 bg-indigo-600 text-white rounded">Upload</button>
+            <input id="paper-input" type="file" name="paper" accept="application/pdf" class="block w-full" required />
+            <button id="upload-btn" class="px-4 py-2 bg-indigo-600 text-white rounded opacity-50 cursor-not-allowed" disabled>
+                Upload
+            </button>
         </form>
+        <script>
+            (function () {
+                const input = document.getElementById('paper-input');
+                const btn = document.getElementById('upload-btn');
+                function update() {
+                    const hasFile = input && input.files && input.files.length > 0;
+                    btn.disabled = !hasFile;
+                    btn.classList.toggle('opacity-50', !hasFile);
+                    btn.classList.toggle('cursor-not-allowed', !hasFile);
+                }
+                if (input && btn) {
+                    input.addEventListener('change', update);
+                    update();
+                }
+            })();
+        </script>
     </section>
 </div>
 {% endblock %}

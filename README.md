@@ -46,21 +46,35 @@ This app auto‑loads `.env` via `python-dotenv`.
 High-level view of the pipeline and components.
 
 ```mermaid
-flowchart TD
-    U[User uploads PDF] --> A[api/main: save paper.pdf]
-    A --> P[triage.pdf_pages_text → pages.json]
-    P --> R[agent runner]
+---
+config:
+  layout: elk
+  theme: redux-dark
+---
+flowchart LR
+  A[PDF] --> B[pages.json]
+  subgraph AG[Agent]
+    direction TB
+    T1[infer_title]
+    M1[meta.json]
+    T2[imaging_verdict]
+    M2[doc_flags.json]
+    T3[triage_pages]
+    M3[sections.json]
+    T4[extract_and_build_gaps]
+    M4[protocol_card.json<br/>+ gap_report.json]
+    T1 -. writes .-> M1
+    T2 -. writes .-> M2
+    T3 -. writes .-> M3
+    T4 -. writes .-> M4
+  end
+  B --> T1
+  S[status.json]
+  T1 -. status .-> S
+  T2 -. status .-> S
+  T3 -. status .-> S
+  T4 -. status .-> S
 
-    subgraph Agent
-      R --> T1[infer_title → meta.json]
-      T1 --> V[imaging_verdict → doc_flags.json]
-      V -- non-imaging --> Q[[STOP → quarantine]]
-      V -- MRI --> T2[triage_pages → sections.json]
-      T2 --> E1[extract_and_build_gaps]
-      E1 --> G[gap_report.json]
-    end
-
-    G --> UI[Web UI panels]
 ```
 
 ## UI Routes
